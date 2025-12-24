@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import asyncio
 import aiohttp
+import os
 from datetime import datetime
 from typing import Optional, Dict, List
 
@@ -2255,12 +2256,149 @@ async def setup_infrastructure(guild: discord.Guild, bot):
     return report
 
 
+# ============= HTTP SERVER FOR RENDER =============
+
+from aiohttp import web
+
+async def health_handler(request):
+    """Health check endpoint for Render"""
+    return web.Response(text="RobloxCheatz Bot is running!", status=200)
+
+async def api_tickets_handler(request):
+    """API endpoint to get all tickets"""
+    try:
+        tickets = ticket_api.sync_get_all_active_tickets()
+        return web.json_response({"success": True, "tickets": tickets, "count": len(tickets)})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)}, status=500)
+
+async def api_messages_handler(request):
+    """API endpoint to get messages for a ticket"""
+    try:
+        channel_id = request.query.get("channel_id")
+        if not channel_id:
+            return web.json_response({"success": False, "error": "channel_id required"}, status=400)
+        
+        messages = ticket_api.sync_get_ticket_messages(int(channel_id))
+        return web.json_response({"success": True, "messages": messages})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)}, status=500)
+
+async def api_send_handler(request):
+    """API endpoint to send message to ticket"""
+    try:
+        data = await request.json()
+        channel_id = data.get("channel_id")
+        message = data.get("message")
+        sender = data.get("sender", "Admin")
+        
+        if not channel_id or not message:
+            return web.json_response({"success": False, "error": "channel_id and message required"}, status=400)
+        
+        # Save to MongoDB
+        ticket_api.sync_add_ticket_message(int(channel_id), sender, message, "telegram")
+        
+        # Send to Discord channel
+        bot = request.app.get("bot")
+        if bot:
+            channel = bot.get_channel(int(channel_id))
+            if channel:
+                embed = discord.Embed(
+                    description=message,
+                    color=0x9B59B6
+                )
+                embed.set_author(name=f"📱 {sender} (Telegram)")
+                await channel.send(embed=embed)
+        
+        return web.json_response({"success": True})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)}, status=500)
+
+async def api_delete_handler(request):
+    """API endpoint to delete/close a ticket"""
+    try:
+        data = await request.json()
+        channel_id = data.get("channel_id")
+        
+        if not channel_id:
+            return web.json_response({"success": False, "error": "channel_id required"}, status=400)
+        
+        # Delete from MongoDB
+        ticket_api.sync_delete_ticket(int(channel_id))
+        
+        # Delete Discord channel
+        bot = request.app.get("bot")
+        if bot:
+            channel = bot.get_channel(int(channel_id))
+            if channel:
+                await channel.delete(reason="Closed via Telegram WebApp")
+        
+        return web.json_response({"success": True})
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)}, status=500)
+
+@web.middleware
+async def cors_middleware(request, handler):
+    """CORS middleware for API requests"""
+    if request.method == "OPTIONS":
+        response = web.Response()
+    else:
+        response = await handler(request)
+    
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+async def start_http_server(bot):
+    """Start HTTP server for health checks and API"""
+    app = web.Application(middlewares=[cors_middleware])
+    app["bot"] = bot
+    
+    # Routes
+    app.router.add_get("/", health_handler)
+    app.router.add_get("/api/tickets", api_tickets_handler)
+    app.router.add_get("/api/messages", api_messages_handler)
+    app.router.add_post("/api/send", api_send_handler)
+    app.router.add_post("/api/delete", api_delete_handler)
+    app.router.add_options("/api/send", lambda r: web.Response())
+    app.router.add_options("/api/delete", lambda r: web.Response())
+    
+    # Get port from environment (Render sets PORT)
+    port = int(os.environ.get("PORT", 10000))
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"[OK] HTTP server started on port {port}")
+    return runner
+
+
 # ============= MAIN =============
+
+async def main_async():
+    """Async main function"""
+    # Initialize ticket API database
+    ticket_api.init_db()
+    
+    # Create bot
+    bot = VerificationBot()
+    
+    # Start HTTP server
+    http_runner = await start_http_server(bot)
+    
+    try:
+        # Start bot
+        await bot.start(config.DISCORD_TOKEN)
+    finally:
+        # Cleanup
+        await http_runner.cleanup()
+        await bot.close()
 
 def main():
     """Start the bot"""
-    bot = VerificationBot()
-    bot.run(config.DISCORD_TOKEN)
+    asyncio.run(main_async())
 
 
 if __name__ == "__main__":
