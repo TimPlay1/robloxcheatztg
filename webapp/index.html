@@ -438,8 +438,11 @@
             document.getElementById('input-area').style.display = 'block';
             document.getElementById('no-chat').style.display = 'none';
             
+            // Clear messages and show spinner
+            document.getElementById('messages').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            
             // Load messages from API
-            loadMessages(id);
+            loadMessages(id, true);
             
             // Update tickets list
             renderTickets();
@@ -447,11 +450,6 @@
         
         async function loadMessages(channelId, showSpinner = true) {
             const container = document.getElementById('messages');
-            
-            // Only show spinner on first load, not on refresh
-            if (showSpinner && container.children.length === 0) {
-                container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-            }
             
             try {
                 const response = await fetch(`${API_URL}/api/messages?channel_id=${channelId}`);
@@ -461,8 +459,8 @@
                     const newMessages = data.messages || [];
                     const oldMessages = tickets[channelId]?.messages || [];
                     
-                    // Only re-render if messages changed
-                    if (JSON.stringify(newMessages) !== JSON.stringify(oldMessages)) {
+                    // Always render on first load (showSpinner=true), or if messages changed
+                    if (showSpinner || JSON.stringify(newMessages) !== JSON.stringify(oldMessages)) {
                         tickets[channelId].messages = newMessages;
                         renderMessages(newMessages);
                     }
