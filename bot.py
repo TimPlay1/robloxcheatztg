@@ -2259,7 +2259,7 @@ async def setup_infrastructure(guild: discord.Guild, bot):
 
 # ============= MAIN =============
 
-async def run_webhook_server(bot_instance):
+async def run_webhook_server():
     """Run async webhook server using aiohttp"""
     from aiohttp import web
     
@@ -2287,24 +2287,29 @@ async def run_webhook_server(bot_instance):
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"[OK] Async webhook server running on port {port}")
+    return runner
+
+
+async def async_main():
+    """Async main - runs webhook server and Discord bot together"""
+    import asyncio
+    
+    # Start webhook server FIRST (Render needs port open quickly)
+    webhook_runner = await run_webhook_server()
+    
+    # Create and run Discord bot
+    bot = VerificationBot()
+    
+    try:
+        await bot.start(config.DISCORD_TOKEN)
+    finally:
+        await webhook_runner.cleanup()
 
 
 def main():
     """Start the bot"""
     import asyncio
-    
-    bot = VerificationBot()
-    
-    # Override setup_hook to also start webhook server
-    original_setup_hook = bot.setup_hook
-    
-    async def extended_setup_hook():
-        await original_setup_hook()
-        # Start webhook server in background
-        asyncio.create_task(run_webhook_server(bot))
-    
-    bot.setup_hook = extended_setup_hook
-    bot.run(config.DISCORD_TOKEN)
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

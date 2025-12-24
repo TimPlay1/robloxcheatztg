@@ -69,9 +69,10 @@ def is_authorized(user_id: int) -> bool:
     return user_id in authorized_users
 
 
-def get_tickets_from_db() -> list:
-    """Get all active tickets from MongoDB"""
-    return ticket_api.sync_get_all_active_tickets()
+async def get_tickets_from_db() -> list:
+    """Get all active tickets from MongoDB (non-blocking)"""
+    import asyncio
+    return await asyncio.to_thread(ticket_api.sync_get_all_active_tickets)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,8 +148,8 @@ async def list_tickets_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text("❌ Not authorized. Use /auth to login.")
         return
     
-    # Get tickets from MongoDB
-    tickets = get_tickets_from_db()
+    # Get tickets from MongoDB (non-blocking)
+    tickets = await get_tickets_from_db()
     
     if not tickets:
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back_main")]]
