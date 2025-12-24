@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional, Dict, List
 
 import config
-import database
+import mongodb_database as database  # Use MongoDB for cloud deployment
 from komerza_api import api as komerza_api
 from roles import RoleManager, setup_channels_permissions
 from utils import (
@@ -2386,15 +2386,20 @@ async def start_http_server(bot):
     await site.start()
     print(f"[OK] HTTP server started on port {port}")
     
-    # Set Telegram webhook
+    # Set Telegram webhook (delete old first)
     webhook_url = os.environ.get("WEBHOOK_URL", "https://robloxcheatztg.onrender.com")
     try:
         import httpx
+        tg_token = os.environ.get("TELEGRAM_TOKEN")
         async with httpx.AsyncClient() as client:
-            tg_token = os.environ.get("TELEGRAM_TOKEN")
+            # First delete any existing webhook
+            await client.post(f"https://api.telegram.org/bot{tg_token}/deleteWebhook")
+            print("[OK] Old Telegram webhook deleted")
+            
+            # Set new webhook
             resp = await client.post(
                 f"https://api.telegram.org/bot{tg_token}/setWebhook",
-                json={"url": f"{webhook_url}/telegram/webhook"}
+                json={"url": f"{webhook_url}/telegram/webhook", "drop_pending_updates": True}
             )
             result = resp.json()
             if result.get("ok"):
