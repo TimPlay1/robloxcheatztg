@@ -2265,6 +2265,9 @@ async def run_webhook_server():
     """Run async webhook server using aiohttp"""
     from aiohttp import web
     
+    # Initialize ticket_api MongoDB connection
+    ticket_api.init_db()
+    
     async def health_handler(request):
         return web.Response(text="RobloxCheatz Bot is running!")
     
@@ -2281,6 +2284,9 @@ async def run_webhook_server():
     async def api_tickets_handler(request):
         """API endpoint to get all tickets"""
         try:
+            # Ensure ticket_api is initialized
+            if ticket_api.tickets_collection is None:
+                ticket_api.init_db()
             tickets = await asyncio.to_thread(ticket_api.sync_get_all_active_tickets)
             return web.json_response({
                 "success": True,
@@ -2288,6 +2294,7 @@ async def run_webhook_server():
                 "count": len(tickets)
             })
         except Exception as e:
+            print(f"[!] API tickets error: {e}")
             return web.json_response({"success": False, "error": str(e)}, status=500)
     
     async def api_delete_handler(request):
