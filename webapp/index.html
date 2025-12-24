@@ -552,16 +552,25 @@
             if (!currentTicket) return;
             
             const ticket = tickets[currentTicket];
+            const ticketIdToDelete = currentTicket;
             
             if (confirm(`Are you sure you want to delete the ticket for ${ticket.username}?`)) {
                 try {
-                    const response = await fetch(`${API_URL}/api/delete?channel_id=${currentTicket}`, {
+                    const response = await fetch(`${API_URL}/api/delete?channel_id=${ticketIdToDelete}`, {
                         method: 'DELETE'
                     });
-                    const data = await response.json();
                     
-                    if (data.success) {
-                        delete tickets[currentTicket];
+                    let data = { success: false };
+                    try {
+                        data = await response.json();
+                    } catch (e) {
+                        // Response might not be JSON, check status
+                        data = { success: response.ok };
+                    }
+                    
+                    // Always clean up UI if request was successful or ticket is gone
+                    if (data.success || response.ok) {
+                        delete tickets[ticketIdToDelete];
                         currentTicket = null;
                         
                         document.getElementById('chat-username').textContent = 'Select a ticket';
@@ -569,23 +578,24 @@
                         document.getElementById('chat-actions').style.display = 'none';
                         document.getElementById('input-area').style.display = 'none';
                         document.getElementById('no-chat').style.display = 'block';
-                        document.getElementById('messages').innerHTML = '';
+                        document.getElementById('messages').innerHTML = `
+                            <div class="text-center text-gray-500 py-8">
+                                <span class="icon icon-chat" style="width: 48px; height: 48px; display: block; margin: 0 auto;"></span>
+                                <p class="mt-2">Select a ticket to view messages</p>
+                            </div>
+                        `;
                         
                         renderTickets();
                         
-                        // Notify Telegram
-                        if (tg.sendData) {
-                            tg.sendData(JSON.stringify({
-                                action: 'delete_ticket',
-                                ticket_id: currentTicket
-                            }));
-                        }
+                        // Reload tickets from server to ensure sync
+                        setTimeout(loadTickets, 500);
                     } else {
                         alert('Error deleting ticket: ' + (data.error || 'Unknown error'));
                     }
                 } catch (error) {
                     console.error('Error deleting ticket:', error);
-                    alert('Error deleting ticket');
+                    // Still try to refresh tickets - deletion might have worked
+                    loadTickets();
                 }
             }
         }
