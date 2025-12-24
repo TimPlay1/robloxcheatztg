@@ -369,6 +369,40 @@ def sync_update_telegram_chat_id(channel_id: int, telegram_chat_id: int):
         print(f"[!] Error updating telegram chat ID: {e}")
 
 
+def sync_add_message(channel_id: int, sender: str, sender_type: str, content: str) -> bool:
+    """Add a message to ticket history
+    
+    Args:
+        channel_id: Discord channel ID of the ticket
+        sender: Name of the sender (username)
+        sender_type: 'discord', 'telegram', or 'webapp'
+        content: Message content
+    
+    Returns:
+        True if message was added, False otherwise
+    """
+    try:
+        message = {
+            "id": str(ObjectId()),
+            "sender": sender,
+            "sender_type": sender_type,
+            "content": content,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        result = tickets_collection.update_one(
+            {"channel_id": channel_id},
+            {
+                "$push": {"messages": message},
+                "$set": {"updated_at": datetime.now()}
+            }
+        )
+        return result.modified_count > 0
+    except Exception as e:
+        print(f"[!] Error adding message to ticket: {e}")
+        return False
+
+
 # Initialize database on import
 init_db()
 

@@ -444,6 +444,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 embed.set_footer(text="Response via Telegram")
                 
                 await channel.send(embed=embed)
+                
+                # Save message to database
+                try:
+                    import asyncio
+                    await asyncio.to_thread(
+                        ticket_api.sync_add_message,
+                        channel_id,
+                        "VIP Support",
+                        "telegram",
+                        message_text
+                    )
+                except Exception as e:
+                    print(f"[!] Failed to save Telegram message to DB: {e}")
+                
                 await update.message.reply_text("✅ Message sent!")
             else:
                 await update.message.reply_text("❌ Ticket channel not found. It may have been closed.")

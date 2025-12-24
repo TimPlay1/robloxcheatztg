@@ -629,6 +629,18 @@ class VerificationBot(commands.Bot):
         if message.channel.name.startswith("ticket-"):
             # Check if it's a VIP ticket (has [VIP] in topic)
             if message.channel.topic and "[VIP]" in message.channel.topic:
+                # Save message to database
+                try:
+                    await asyncio.to_thread(
+                        ticket_api.sync_add_message,
+                        message.channel.id,
+                        message.author.display_name,
+                        "discord",
+                        message.content
+                    )
+                except Exception as e:
+                    print(f"[!] Failed to save message to DB: {e}")
+                
                 # Forward to Telegram
                 try:
                     await telegram_bot.notify_ticket_message(
