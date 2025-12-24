@@ -2347,7 +2347,7 @@ async def run_webhook_server():
                     description=message_text,
                     color=0xFFD700  # Gold for admin
                 )
-                embed.set_author(name="👑 VIP Support", icon_url="https://i.imgur.com/8Q9Z0Zm.png")
+                embed.set_author(name="👑 VIP Support", icon_url="https://raw.githubusercontent.com/TimPlay1/robloxcheatz/main/public/logo.jpg")
                 embed.set_footer(text="Response via WebApp")
                 await channel.send(embed=embed)
                 return web.json_response({"success": True})
