@@ -322,15 +322,25 @@
             
             try {
                 const response = await fetch(`${API_URL}/api/tickets`);
-                const data = await response.json();
+                const text = await response.text();
+                // Parse with BigInt support - convert large numbers to strings
+                const data = JSON.parse(text, (key, value) => {
+                    // Keep channel_id and discord_user_id as strings to prevent precision loss
+                    if (typeof value === 'number' && value > 9007199254740991) {
+                        return value.toString();
+                    }
+                    return value;
+                });
                 
                 loadingEl.style.display = 'none';
                 
                 if (data.success && data.tickets) {
                     tickets = {};
                     data.tickets.forEach(ticket => {
-                        tickets[ticket.channel_id] = {
-                            id: ticket.channel_id,
+                        // Ensure channel_id is always a string
+                        const channelId = String(ticket.channel_id);
+                        tickets[channelId] = {
+                            id: channelId,
                             username: ticket.discord_username,
                             email: ticket.email,
                             totalSpent: ticket.total_spent || 0,
@@ -357,24 +367,26 @@
         
         function renderTickets() {
             const list = document.getElementById('tickets-list');
-            const noTickets = document.getElementById('no-tickets');
             const count = document.getElementById('ticket-count');
             const loadingEl = document.getElementById('loading-tickets');
             
-            loadingEl.style.display = 'none';
+            if (loadingEl) loadingEl.style.display = 'none';
             
             const ticketKeys = Object.keys(tickets);
-            count.textContent = ticketKeys.length;
+            if (count) count.textContent = ticketKeys.length;
+            
+            // Clear list but preserve structure
+            list.innerHTML = '';
             
             if (ticketKeys.length === 0) {
-                noTickets.style.display = 'block';
-                list.innerHTML = '';
-                list.appendChild(noTickets);
+                list.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <span class="icon icon-inbox" style="width: 48px; height: 48px; display: block; margin: 0 auto;"></span>
+                        <p class="mt-2">No active tickets</p>
+                    </div>
+                `;
                 return;
             }
-            
-            noTickets.style.display = 'none';
-            list.innerHTML = '';
             
             ticketKeys.forEach(id => {
                 const ticket = tickets[id];

@@ -94,6 +94,11 @@ def serialize_ticket(ticket):
     if ticket:
         ticket = dict(ticket)  # Create a copy
         ticket["_id"] = str(ticket["_id"])
+        # Convert channel_id and discord_user_id to strings to prevent JS precision loss
+        if "channel_id" in ticket:
+            ticket["channel_id"] = str(ticket["channel_id"])
+        if "discord_user_id" in ticket:
+            ticket["discord_user_id"] = str(ticket["discord_user_id"])
         # Convert datetime objects to ISO strings
         for key, value in ticket.items():
             if isinstance(value, datetime):
