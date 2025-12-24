@@ -92,7 +92,12 @@ def sync_remove_authorized_user(telegram_user_id: int):
 def serialize_ticket(ticket):
     """Serialize ticket for JSON response"""
     if ticket:
+        ticket = dict(ticket)  # Create a copy
         ticket["_id"] = str(ticket["_id"])
+        # Convert datetime objects to ISO strings
+        for key, value in ticket.items():
+            if isinstance(value, datetime):
+                ticket[key] = value.isoformat()
     return ticket
 
 
