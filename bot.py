@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional, Dict, List
 
 import config
-import database
+import mongodb_database as database  # Use MongoDB instead of SQLite
 from komerza_api import api as komerza_api
 from roles import RoleManager, setup_channels_permissions
 from utils import (
