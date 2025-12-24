@@ -767,7 +767,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Check if already verified
@@ -780,7 +780,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["warning"]
             )
             embed.set_thumbnail(url=UI_ICONS["warning"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Check if email already linked
@@ -793,7 +793,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["warning"]
             )
             embed.set_thumbnail(url=UI_ICONS["warning"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Check email in API
@@ -813,7 +813,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["search"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Get purchase data
@@ -839,7 +839,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["dollar"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Link email
@@ -854,7 +854,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Assign roles
@@ -942,7 +942,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
         embed.set_footer(text="Welcome to the RobloxCheatz community! Check your DMs for details.")
         embed.timestamp = datetime.now()
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         
         # Send permanent copy to DM
         try:
@@ -1015,7 +1015,7 @@ class TicketView(discord.ui.View):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["lock"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         is_priority = user_data.get("total_spent", 0) >= 70
@@ -1084,7 +1084,7 @@ class PriorityTicketView(discord.ui.View):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["crown"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         await create_ticket_for_user(interaction, user_data, is_priority=True)
@@ -1114,7 +1114,7 @@ class ClaimRewardView(discord.ui.View):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["lock"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Check keys balance
@@ -1132,7 +1132,7 @@ class ClaimRewardView(discord.ui.View):
                 color=config.COLORS["warning"]
             )
             embed.set_thumbnail(url=UI_ICONS["key"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Use a key
@@ -1144,7 +1144,7 @@ class ClaimRewardView(discord.ui.View):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         
         # Roll for reward
@@ -1204,7 +1204,7 @@ class ClaimRewardView(discord.ui.View):
         embed.set_footer(text="Thank you for your loyalty! Check your DMs for a copy.")
         embed.timestamp = datetime.now()
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         
         # Send reward to DM as well (permanent copy)
         try:
@@ -1280,7 +1280,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
                 color=config.COLORS["warning"]
             )
             embed.set_thumbnail(url=UI_ICONS["ticket"])
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
             return
         else:
             # Channel deleted but ticket exists in DB - clean up
@@ -1295,7 +1295,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
             color=config.COLORS["warning"]
         )
         embed.set_thumbnail(url=UI_ICONS["ticket"])
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         return
     
     # Find tickets category
@@ -1343,7 +1343,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
             description=f"{ui('warning')} Failed to create ticket. Please try again.",
             color=config.COLORS["error"]
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         return
     
     # Send welcome message
@@ -1370,7 +1370,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
         color=config.COLORS["success"]
     )
     success_embed.set_thumbnail(url=UI_ICONS["ticket"])
-    await interaction.followup.send(embed=success_embed, ephemeral=True)
+    await interaction.followup.send(embed=success_embed, ephemeral=True, delete_after=15)
     
     # Send Telegram notification for VIP tickets
     if is_priority:
@@ -1411,13 +1411,13 @@ class AdminCog(commands.Cog):
         email: Optional[str] = None
     ):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
         
         if not user and not email:
-            await interaction.followup.send(f"{ui('cross')} Specify a user or email", ephemeral=True)
+            await interaction.followup.send(f"{ui('cross')} Specify a user or email", ephemeral=True, delete_after=15)
             return
         
         success = False
@@ -1457,7 +1457,7 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
     
     @app_commands.command(name="admin_lookup", description="[ADMIN] View user information")
     @app_commands.describe(
@@ -1471,7 +1471,7 @@ class AdminCog(commands.Cog):
         email: Optional[str] = None
     ):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1483,7 +1483,7 @@ class AdminCog(commands.Cog):
             user_data = await database.get_user_by_email(email)
         
         if not user_data:
-            await interaction.followup.send(f"{ui('cross')} User not found", ephemeral=True)
+            await interaction.followup.send(f"{ui('cross')} User not found", ephemeral=True, delete_after=15)
             return
         
         keys_data = await database.get_user_keys(user_data["discord_id"])
@@ -1505,12 +1505,12 @@ class AdminCog(commands.Cog):
         embed.add_field(name=f"{ui('key')} Loyalty Keys", value=str(keys_data["keys_balance"]), inline=True)
         embed.add_field(name=f"{ui('time')} Verified At", value=user_data["verified_at"], inline=True)
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
     
     @app_commands.command(name="admin_sync", description="[ADMIN] Sync all users")
     async def admin_sync(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1521,7 +1521,7 @@ class AdminCog(commands.Cog):
             color=config.COLORS["primary"]
         )
         embed.set_thumbnail(url=UI_ICONS["refresh"])
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         
         komerza_api.clear_cache()
         await self.bot.sync_purchases()
@@ -1546,14 +1546,14 @@ class AdminCog(commands.Cog):
         amount: int
     ):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
         
         user_data = await database.get_user_by_discord_id(user.id)
         if not user_data:
-            await interaction.followup.send(f"{ui('cross')} User is not verified", ephemeral=True)
+            await interaction.followup.send(f"{ui('cross')} User is not verified", ephemeral=True, delete_after=15)
             return
         
         new_balance = await database.add_loyalty_keys(user.id, amount)
@@ -1565,7 +1565,7 @@ class AdminCog(commands.Cog):
             color=config.COLORS["success"]
         )
         embed.set_thumbnail(url=UI_ICONS["key"])
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         
         # Notify user
         try:
@@ -1583,7 +1583,7 @@ class AdminCog(commands.Cog):
     @app_commands.command(name="admin_setup", description="[ADMIN] Full setup - channels, roles, infrastructure")
     async def admin_setup(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1632,12 +1632,12 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
     
     @app_commands.command(name="admin_update_status", description="[ADMIN] Force update status channel")
     async def admin_update_status(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1659,12 +1659,12 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
 
     @app_commands.command(name="admin_refresh_embeds", description="[ADMIN] Refresh all infrastructure embeds with new thumbnails")
     async def admin_refresh_embeds(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1806,12 +1806,12 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
 
     @app_commands.command(name="admin_clear_emojis", description="[ADMIN] Clear all bot emojis from main server")
     async def admin_clear_emojis(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1821,7 +1821,7 @@ class AdminCog(commands.Cog):
             description=f"{ui('time')} Removing bot emojis from main server...",
             color=config.COLORS["primary"]
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         
         deleted = await clear_main_server_emojis(interaction.guild)
         
@@ -1836,7 +1836,7 @@ class AdminCog(commands.Cog):
     @app_commands.command(name="admin_setup_emojis", description="[ADMIN] Setup all emojis on emoji servers")
     async def admin_setup_emojis(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1846,7 +1846,7 @@ class AdminCog(commands.Cog):
             description=f"{ui('time')} Creating emojis on emoji servers...",
             color=config.COLORS["primary"]
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
         
         # Create missing emojis
         await create_missing_emojis(self.bot, interaction.guild)
@@ -1867,7 +1867,7 @@ class AdminCog(commands.Cog):
     @app_commands.describe(email="Email to check", fix_roles="Automatically assign missing roles")
     async def admin_check_products(self, interaction: discord.Interaction, email: str, fix_roles: bool = True):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1876,7 +1876,7 @@ class AdminCog(commands.Cog):
         customer = await komerza_api.get_customer_by_email(email)
         
         if not customer:
-            await interaction.followup.send(f"{ui('cross')} Customer not found: `{email}`", ephemeral=True)
+            await interaction.followup.send(f"{ui('cross')} Customer not found: `{email}`", ephemeral=True, delete_after=15)
             return
         
         # Find linked Discord user
@@ -1999,7 +1999,7 @@ class AdminCog(commands.Cog):
             color=config.COLORS["success"] if roles_assigned or roles_already_had else config.COLORS["primary"]
         )
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
 
 
 # ============= INFRASTRUCTURE SETUP =============
