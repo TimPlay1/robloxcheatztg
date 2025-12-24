@@ -2278,10 +2278,48 @@ async def run_webhook_server():
             print(f"[!] Telegram webhook error: {e}")
             return web.Response(text="Error", status=500)
     
-    app = web.Application()
+    async def api_tickets_handler(request):
+        """API endpoint to get all tickets"""
+        try:
+            tickets = await asyncio.to_thread(ticket_api.sync_get_all_active_tickets)
+            return web.json_response({
+                "success": True,
+                "tickets": tickets,
+                "count": len(tickets)
+            })
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+    
+    async def api_delete_handler(request):
+        """API endpoint to delete a ticket"""
+        try:
+            channel_id = int(request.query.get('channel_id', 0))
+            if channel_id:
+                await asyncio.to_thread(ticket_api.sync_delete_ticket, channel_id)
+                return web.json_response({"success": True})
+            return web.json_response({"success": False, "error": "Missing channel_id"}, status=400)
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+    
+    # Enable CORS
+    async def cors_middleware(request, handler):
+        if request.method == 'OPTIONS':
+            response = web.Response()
+        else:
+            response = await handler(request)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
+    
+    app = web.Application(middlewares=[cors_middleware])
     app.router.add_get('/', health_handler)
     app.router.add_get('/health', health_handler)
     app.router.add_post('/telegram-webhook', telegram_webhook_handler)
+    app.router.add_get('/api/tickets', api_tickets_handler)
+    app.router.add_route('*', '/api/tickets', api_tickets_handler)  # Handle OPTIONS
+    app.router.add_get('/api/delete', api_delete_handler)
+    app.router.add_delete('/api/delete', api_delete_handler)
     
     port = int(os.environ.get('PORT', 10000))
     runner = web.AppRunner(app)
