@@ -447,23 +447,35 @@
             renderTickets();
         }
         
-        async function loadMessages(channelId) {
+        async function loadMessages(channelId, showSpinner = true) {
             const container = document.getElementById('messages');
-            container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            
+            // Only show spinner on first load, not on refresh
+            if (showSpinner && container.children.length === 0) {
+                container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            }
             
             try {
                 const response = await fetch(`${API_URL}/api/messages?channel_id=${channelId}`);
                 const data = await response.json();
                 
                 if (data.success) {
-                    tickets[channelId].messages = data.messages || [];
-                    renderMessages(data.messages || []);
-                } else {
+                    const newMessages = data.messages || [];
+                    const oldMessages = tickets[channelId]?.messages || [];
+                    
+                    // Only re-render if messages changed
+                    if (JSON.stringify(newMessages) !== JSON.stringify(oldMessages)) {
+                        tickets[channelId].messages = newMessages;
+                        renderMessages(newMessages);
+                    }
+                } else if (showSpinner) {
                     container.innerHTML = '<p class="text-center text-gray-500 py-4">Error loading messages</p>';
                 }
             } catch (error) {
                 console.error('Error loading messages:', error);
-                container.innerHTML = '<p class="text-center text-gray-500 py-4">Error loading messages</p>';
+                if (showSpinner) {
+                    container.innerHTML = '<p class="text-center text-gray-500 py-4">Error loading messages</p>';
+                }
             }
         }
         
@@ -605,10 +617,10 @@
         // Refresh tickets every 30 seconds
         setInterval(loadTickets, 30000);
         
-        // Refresh messages every 5 seconds if ticket is selected
+        // Refresh messages every 5 seconds if ticket is selected (silently, no spinner)
         setInterval(() => {
             if (currentTicket) {
-                loadMessages(currentTicket);
+                loadMessages(currentTicket, false);
             }
         }, 5000);
     </script>

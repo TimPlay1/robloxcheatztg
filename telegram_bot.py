@@ -218,7 +218,8 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tickets = await get_tickets_from_db()
     ticket = None
     for t in tickets:
-        if t.get("channel_id") == channel_id:
+        # Compare as integers (channel_id in DB might be string or int)
+        if int(t.get("channel_id", 0)) == channel_id:
             ticket = t
             break
     
@@ -305,7 +306,8 @@ async def delete_ticket_callback(update: Update, context: ContextTypes.DEFAULT_T
     tickets = await get_tickets_from_db()
     ticket_info = None
     for t in tickets:
-        if t.get("channel_id") == channel_id:
+        # Compare as integers (channel_id in DB might be string)
+        if int(t.get("channel_id", 0)) == channel_id:
             ticket_info = t
             break
     
