@@ -2301,7 +2301,8 @@ async def run_webhook_server():
         except Exception as e:
             return web.json_response({"success": False, "error": str(e)}, status=500)
     
-    # Enable CORS
+    # Enable CORS middleware
+    @web.middleware
     async def cors_middleware(request, handler):
         if request.method == 'OPTIONS':
             response = web.Response()
@@ -2317,9 +2318,7 @@ async def run_webhook_server():
     app.router.add_get('/health', health_handler)
     app.router.add_post('/telegram-webhook', telegram_webhook_handler)
     app.router.add_get('/api/tickets', api_tickets_handler)
-    app.router.add_route('*', '/api/tickets', api_tickets_handler)  # Handle OPTIONS
     app.router.add_get('/api/delete', api_delete_handler)
-    app.router.add_delete('/api/delete', api_delete_handler)
     
     port = int(os.environ.get('PORT', 10000))
     runner = web.AppRunner(app)
