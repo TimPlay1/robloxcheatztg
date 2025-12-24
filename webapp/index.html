@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RobloxCheatz - VIP Support Panel</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        :root {
+            --accent: #ec4899;
+            --accent-600: #db2777;
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --text-primary: #ffffff;
+            --text-secondary: #9ca3af;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .glass {
+            background: rgba(18, 18, 26, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .glow-accent {
+            box-shadow: 0 0 20px rgba(236, 72, 153, 0.3);
+        }
+        
+        .ticket-card {
+            transition: all 0.3s ease;
+        }
+        
+        .ticket-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent);
+        }
+        
+        .ticket-card.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px rgba(236, 72, 153, 0.2);
+        }
+        
+        .message-bubble {
+            max-width: 80%;
+            animation: slideIn 0.2s ease;
+        }
+        
+        .message-bubble.admin {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-600) 100%);
+            margin-left: auto;
+        }
+        
+        .message-bubble.user {
+            background: var(--bg-tertiary);
+            margin-right: auto;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Snow effect */
+        .snow {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        
+        .snowflake {
+            position: absolute;
+            top: -20px;
+            background: white;
+            border-radius: 50%;
+            animation: fall linear infinite;
+            opacity: 0.3;
+        }
+        
+        @keyframes fall {
+            to {
+                transform: translateY(100vh);
+            }
+        }
+        
+        /* Icons */
+        .icon {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            vertical-align: middle;
+        }
+        
+        .icon-tickets {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/ticket.png');
+        }
+        
+        .icon-user {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/user.png');
+        }
+        
+        .icon-chat {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/chat.png');
+        }
+        
+        .icon-trash {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/trash.png');
+        }
+        
+        .icon-crown {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFD700/crown.png');
+        }
+        
+        .icon-dollar {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/us-dollar-circled.png');
+        }
+        
+        .icon-star {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFD700/star.png');
+        }
+        
+        .icon-send {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/sent.png');
+        }
+        
+        .icon-inbox {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/inbox.png');
+        }
+        
+        .icon-refresh {
+            background-image: url('https://img.icons8.com/ios-filled/50/FFFFFF/refresh.png');
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+        
+        .btn-danger:hover {
+            opacity: 0.9;
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(236, 72, 153, 0.2);
+            border-top-color: #ec4899;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Snow Effect -->
+    <div class="snow" id="snow"></div>
+    
+    <!-- Header -->
+    <header class="glass border-b border-white/10 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                    <span class="icon icon-crown" style="width: 24px; height: 24px;"></span>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg">RobloxCheatz</h1>
+                    <p class="text-xs text-gray-400">VIP Support Panel</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="loadTickets()" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition">
+                    <span class="icon icon-refresh"></span>
+                </button>
+                <span class="px-2 py-1 rounded-full bg-green-500/20 text-green-400 text-xs flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                    Online
+                </span>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto p-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-120px)]">
+            
+            <!-- Tickets List -->
+            <div class="glass rounded-2xl border border-white/10 overflow-hidden flex flex-col">
+                <div class="p-4 border-b border-white/10">
+                    <h2 class="font-semibold flex items-center gap-2">
+                        <span class="icon icon-tickets"></span>
+                        Active Tickets
+                        <span class="ml-auto px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-400 text-xs" id="ticket-count">0</span>
+                    </h2>
+                </div>
+                <div class="flex-1 overflow-y-auto scrollbar-hide p-3 space-y-2" id="tickets-list">
+                    <div class="loading" id="loading-tickets">
+                        <div class="spinner"></div>
+                    </div>
+                    <div class="text-center text-gray-500 py-8" id="no-tickets" style="display: none;">
+                        <span class="icon icon-inbox" style="width: 48px; height: 48px; display: block; margin: 0 auto;"></span>
+                        <p class="mt-2">No active tickets</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Area -->
+            <div class="lg:col-span-2 glass rounded-2xl border border-white/10 overflow-hidden flex flex-col">
+                <!-- Chat Header -->
+                <div class="p-4 border-b border-white/10 flex items-center gap-3" id="chat-header">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                        <span class="icon icon-user" style="width: 24px; height: 24px;"></span>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-semibold" id="chat-username">Select a ticket</h3>
+                        <p class="text-xs text-gray-400" id="chat-info">Click on a ticket to start chatting</p>
+                    </div>
+                    <div class="flex items-center gap-2" id="chat-actions" style="display: none;">
+                        <button class="p-2 rounded-lg btn-danger transition flex items-center gap-1" onclick="deleteTicket()">
+                            <span class="icon icon-trash"></span>
+                            Delete
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Messages -->
+                <div class="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-3" id="messages">
+                    <div class="text-center text-gray-500 py-8" id="no-chat">
+                        <span class="icon icon-chat" style="width: 48px; height: 48px; display: block; margin: 0 auto;"></span>
+                        <p class="mt-2">Select a ticket to view messages</p>
+                    </div>
+                </div>
+                
+                <!-- Input Area -->
+                <div class="p-4 border-t border-white/10" id="input-area" style="display: none;">
+                    <div class="flex gap-2">
+                        <input 
+                            type="text" 
+                            id="message-input"
+                            placeholder="Type your message..."
+                            class="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 focus:outline-none transition"
+                            onkeypress="if(event.key === 'Enter') sendMessage()"
+                        >
+                        <button 
+                            onclick="sendMessage()"
+                            class="px-6 py-3 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 font-semibold hover:opacity-90 transition glow-accent flex items-center gap-2"
+                        >
+                            <span class="icon icon-send"></span>
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        // Initialize Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // API URL
+        const API_URL = window.location.origin;
+        
+        // State
+        let currentTicket = null;
+        let tickets = {};
+        
+        // Load tickets from API
+        async function loadTickets() {
+            const list = document.getElementById('tickets-list');
+            const loadingEl = document.getElementById('loading-tickets');
+            const noTickets = document.getElementById('no-tickets');
+            
+            loadingEl.style.display = 'flex';
+            noTickets.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/tickets`);
+                const data = await response.json();
+                
+                loadingEl.style.display = 'none';
+                
+                if (data.success && data.tickets) {
+                    tickets = {};
+                    data.tickets.forEach(ticket => {
+                        tickets[ticket.channel_id] = {
+                            id: ticket.channel_id,
+                            username: ticket.discord_username,
+                            email: ticket.email,
+                            totalSpent: ticket.total_spent || 0,
+                            level: ticket.level || 1,
+                            created: ticket.created_at || '',
+                            messages: ticket.messages || []
+                        };
+                    });
+                    renderTickets();
+                } else {
+                    noTickets.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+                loadingEl.style.display = 'none';
+                noTickets.style.display = 'block';
+                noTickets.innerHTML = `
+                    <span class="icon icon-inbox" style="width: 48px; height: 48px; display: block; margin: 0 auto;"></span>
+                    <p class="mt-2">Error loading tickets</p>
+                    <button onclick="loadTickets()" class="mt-2 px-4 py-2 rounded-lg bg-pink-500/20 text-pink-400 text-sm">Retry</button>
+                `;
+            }
+        }
+        
+        function renderTickets() {
+            const list = document.getElementById('tickets-list');
+            const noTickets = document.getElementById('no-tickets');
+            const count = document.getElementById('ticket-count');
+            const loadingEl = document.getElementById('loading-tickets');
+            
+            loadingEl.style.display = 'none';
+            
+            const ticketKeys = Object.keys(tickets);
+            count.textContent = ticketKeys.length;
+            
+            if (ticketKeys.length === 0) {
+                noTickets.style.display = 'block';
+                list.innerHTML = '';
+                list.appendChild(noTickets);
+                return;
+            }
+            
+            noTickets.style.display = 'none';
+            list.innerHTML = '';
+            
+            ticketKeys.forEach(id => {
+                const ticket = tickets[id];
+                const card = document.createElement('div');
+                card.className = `ticket-card rounded-xl border border-white/10 p-3 cursor-pointer ${currentTicket == id ? 'active' : ''}`;
+                card.onclick = () => selectTicket(id);
+                
+                let createdTime = '';
+                if (ticket.created) {
+                    const date = new Date(ticket.created);
+                    createdTime = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                }
+                
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                            <span class="icon icon-user" style="width: 20px; height: 20px;"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <h3 class="font-semibold truncate">${ticket.username}</h3>
+                                <span class="text-xs text-gray-500">${createdTime}</span>
+                            </div>
+                            <p class="text-xs text-gray-400 truncate">${ticket.email}</p>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-400 flex items-center gap-1">
+                                    <span class="icon icon-dollar" style="width: 12px; height: 12px;"></span>
+                                    $${ticket.totalSpent.toFixed(2)}
+                                </span>
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 flex items-center gap-1">
+                                    <span class="icon icon-star" style="width: 12px; height: 12px;"></span>
+                                    Lvl ${ticket.level}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                list.appendChild(card);
+            });
+        }
+        
+        function selectTicket(id) {
+            currentTicket = id;
+            const ticket = tickets[id];
+            
+            // Update header
+            document.getElementById('chat-username').textContent = ticket.username;
+            document.getElementById('chat-info').textContent = `${ticket.email} | $${ticket.totalSpent.toFixed(2)} spent`;
+            document.getElementById('chat-actions').style.display = 'flex';
+            document.getElementById('input-area').style.display = 'block';
+            document.getElementById('no-chat').style.display = 'none';
+            
+            // Render messages
+            renderMessages(ticket.messages);
+            
+            // Update tickets list
+            renderTickets();
+        }
+        
+        function renderMessages(msgs) {
+            const container = document.getElementById('messages');
+            container.innerHTML = '';
+            
+            if (!msgs || msgs.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-4">No messages yet</p>';
+                return;
+            }
+            
+            msgs.forEach(msg => {
+                const bubble = document.createElement('div');
+                const isAdmin = msg.sender_type === 'telegram' || msg.sender_type === 'webapp';
+                bubble.className = `message-bubble ${isAdmin ? 'admin' : 'user'} rounded-2xl px-4 py-2`;
+                
+                let time = '';
+                if (msg.timestamp) {
+                    const date = new Date(msg.timestamp);
+                    time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                }
+                
+                bubble.innerHTML = `
+                    <p class="text-sm">${msg.content}</p>
+                    <span class="text-xs opacity-60 mt-1 block">${time}</span>
+                `;
+                container.appendChild(bubble);
+            });
+            
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function sendMessage() {
+            if (!currentTicket) return;
+            
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            
+            if (!text) return;
+            
+            // Add message locally
+            const now = new Date();
+            const msg = {
+                sender: 'admin',
+                sender_type: 'webapp',
+                content: text,
+                timestamp: now.toISOString()
+            };
+            
+            if (!tickets[currentTicket].messages) {
+                tickets[currentTicket].messages = [];
+            }
+            tickets[currentTicket].messages.push(msg);
+            
+            // Clear input
+            input.value = '';
+            
+            // Re-render
+            renderMessages(tickets[currentTicket].messages);
+            
+            // Send to Telegram bot (if connected)
+            if (tg.sendData) {
+                tg.sendData(JSON.stringify({
+                    action: 'send_message',
+                    ticket_id: currentTicket,
+                    text: text
+                }));
+            }
+        }
+        
+        async function deleteTicket() {
+            if (!currentTicket) return;
+            
+            const ticket = tickets[currentTicket];
+            
+            if (confirm(`Are you sure you want to delete the ticket for ${ticket.username}?`)) {
+                try {
+                    const response = await fetch(`${API_URL}/api/delete?channel_id=${currentTicket}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        delete tickets[currentTicket];
+                        currentTicket = null;
+                        
+                        document.getElementById('chat-username').textContent = 'Select a ticket';
+                        document.getElementById('chat-info').textContent = 'Click on a ticket to start chatting';
+                        document.getElementById('chat-actions').style.display = 'none';
+                        document.getElementById('input-area').style.display = 'none';
+                        document.getElementById('no-chat').style.display = 'block';
+                        document.getElementById('messages').innerHTML = '';
+                        
+                        renderTickets();
+                        
+                        // Notify Telegram
+                        if (tg.sendData) {
+                            tg.sendData(JSON.stringify({
+                                action: 'delete_ticket',
+                                ticket_id: currentTicket
+                            }));
+                        }
+                    } else {
+                        alert('Error deleting ticket: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error deleting ticket:', error);
+                    alert('Error deleting ticket');
+                }
+            }
+        }
+        
+        // Snow effect
+        function createSnow() {
+            const snow = document.getElementById('snow');
+            for (let i = 0; i < 30; i++) {
+                const flake = document.createElement('div');
+                flake.className = 'snowflake';
+                flake.style.left = Math.random() * 100 + '%';
+                flake.style.width = (Math.random() * 3 + 2) + 'px';
+                flake.style.height = flake.style.width;
+                flake.style.animationDuration = (Math.random() * 5 + 5) + 's';
+                flake.style.animationDelay = (Math.random() * 5) + 's';
+                flake.style.opacity = Math.random() * 0.3 + 0.2;
+                snow.appendChild(flake);
+            }
+        }
+        
+        // Initialize
+        createSnow();
+        loadTickets();
+        
+        // Refresh tickets every 30 seconds
+        setInterval(loadTickets, 30000);
+    </script>
+</body>
+</html>
