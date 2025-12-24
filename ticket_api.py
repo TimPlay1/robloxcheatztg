@@ -32,7 +32,14 @@ def init_db():
     """Initialize MongoDB connection"""
     global client, db, tickets_collection
     try:
-        client = MongoClient(MONGODB_URI)
+        # Add TLS options for MongoDB Atlas
+        client = MongoClient(
+            MONGODB_URI,
+            tls=True,
+            tlsAllowInvalidCertificates=True,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=10000
+        )
         db = client.robloxcheatz
         tickets_collection = db.tickets
         # Create indexes

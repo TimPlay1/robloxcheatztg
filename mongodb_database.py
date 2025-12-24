@@ -22,7 +22,14 @@ def get_db():
     """Get MongoDB database connection"""
     global _client, _db
     if _db is None:
-        _client = MongoClient(MONGODB_URI)
+        # Add TLS options for MongoDB Atlas
+        _client = MongoClient(
+            MONGODB_URI,
+            tls=True,
+            tlsAllowInvalidCertificates=True,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=10000
+        )
         _db = _client.robloxcheatz
         # Create indexes
         _db.users.create_index("discord_id", unique=True)
