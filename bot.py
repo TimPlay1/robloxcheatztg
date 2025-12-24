@@ -2314,7 +2314,18 @@ async def run_webhook_server():
         try:
             channel_id = int(request.query.get('channel_id', 0))
             if channel_id:
+                # Delete from MongoDB
                 await asyncio.to_thread(ticket_api.sync_delete_ticket, channel_id)
+                
+                # Delete Discord channel
+                if discord_bot_instance:
+                    try:
+                        channel = discord_bot_instance.get_channel(channel_id)
+                        if channel:
+                            await channel.delete(reason="Ticket deleted via WebApp")
+                    except Exception as e:
+                        print(f"[!] Error deleting Discord channel: {e}")
+                
                 return web.json_response({"success": True})
             return web.json_response({"success": False, "error": "Missing channel_id"}, status=400)
         except Exception as e:
@@ -2389,10 +2400,12 @@ async def run_webhook_server():
     app.router.add_get('/health', health_handler)
     app.router.add_post('/telegram-webhook', telegram_webhook_handler)
     app.router.add_get('/api/tickets', api_tickets_handler)
-    app.router.add_get('/api/delete', api_delete_handler)
+    app.router.add_delete('/api/delete', api_delete_handler)
+    app.router.add_get('/api/delete', api_delete_handler)  # Also support GET for backwards compatibility
     app.router.add_post('/api/send', api_send_message_handler)
     app.router.add_get('/api/messages', api_get_messages_handler)
     app.router.add_options('/api/send', lambda r: web.Response())  # CORS preflight
+    app.router.add_options('/api/delete', lambda r: web.Response())  # CORS preflight for delete
     
     port = int(os.environ.get('PORT', 10000))
     runner = web.AppRunner(app)
