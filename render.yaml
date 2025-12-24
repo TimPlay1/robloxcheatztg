@@ -1,0 +1,25 @@
+services:
+  - type: worker
+    name: robloxcheatz-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: KOMERZA_API_TOKEN
+        sync: false
+      - key: TELEGRAM_SECRET_KEY
+        sync: false
+      - key: STORE_ID
+        sync: false
+      - key: GUILD_ID
+        sync: false
+      - key: WEBAPP_URL
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
