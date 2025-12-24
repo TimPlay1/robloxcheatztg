@@ -575,13 +575,15 @@ class VerificationBot(commands.Bot):
             await self.role_manager.ensure_roles_exist()
             await setup_channels_permissions(guild, self.role_manager)
         
-        # Set bot status - custom gaming status
+        # Set initial bot status
         await self.change_presence(
-            activity=discord.Game(
-                name="🎮 Dominating Roblox | robloxcheatz.com"
-            ),
+            activity=discord.Game(name="robloxcheatz.com"),
             status=discord.Status.online
         )
+        
+        # Start rotating status task
+        if not self.rotate_status.is_running():
+            self.rotate_status.start()
         
         # Load customer cache
         await komerza_api.load_all_customers()
@@ -657,6 +659,32 @@ class VerificationBot(commands.Bot):
     async def refresh_customers_cache(self):
         """Refresh customer cache every 10 minutes"""
         await komerza_api.refresh_customers_cache()
+    
+    @tasks.loop(seconds=30)
+    async def rotate_status(self):
+        """Rotate bot status every 30 seconds"""
+        statuses = [
+            discord.Game(name="robloxcheatz.com"),
+            discord.Activity(type=discord.ActivityType.watching, name="VIP Tickets"),
+            discord.Game(name="Best Executors"),
+            discord.Activity(type=discord.ActivityType.listening, name="Support"),
+            discord.Game(name="Premium Tools"),
+        ]
+        
+        # Get current status index from bot attribute
+        if not hasattr(self, '_status_index'):
+            self._status_index = 0
+        
+        await self.change_presence(
+            activity=statuses[self._status_index],
+            status=discord.Status.online
+        )
+        
+        self._status_index = (self._status_index + 1) % len(statuses)
+    
+    @rotate_status.before_loop
+    async def before_rotate_status(self):
+        await self.wait_until_ready()
     
     @tasks.loop(minutes=10)
     async def update_status_channel(self):
