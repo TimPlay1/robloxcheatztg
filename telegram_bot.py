@@ -560,7 +560,7 @@ telegram_app: Optional[Application] = None
 
 
 async def start_telegram_bot(discord_bot_instance):
-    """Start the Telegram bot"""
+    """Start the Telegram bot (webhook mode for web service)"""
     global telegram_app, discord_bot
     
     discord_bot = discord_bot_instance
@@ -576,19 +576,26 @@ async def start_telegram_bot(discord_bot_instance):
     telegram_app.add_handler(CallbackQueryHandler(callback_handler))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Start polling in background
-    print("[OK] Telegram bot starting...")
+    # Initialize without polling (webhook mode - updates come via HTTP)
+    print("[OK] Telegram bot initializing (webhook mode)...")
     await telegram_app.initialize()
     await telegram_app.start()
-    await telegram_app.updater.start_polling(drop_pending_updates=True)
-    print("[OK] Telegram bot started!")
+    print("[OK] Telegram bot ready for webhooks!")
+
+
+async def process_telegram_update(update_data: dict):
+    """Process incoming Telegram update from webhook"""
+    global telegram_app
+    if telegram_app:
+        from telegram import Update
+        update = Update.de_json(update_data, telegram_app.bot)
+        await telegram_app.process_update(update)
 
 
 async def stop_telegram_bot():
     """Stop the Telegram bot"""
     global telegram_app
     if telegram_app:
-        await telegram_app.updater.stop()
         await telegram_app.stop()
         await telegram_app.shutdown()
         print("[OK] Telegram bot stopped")

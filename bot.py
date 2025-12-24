@@ -2350,6 +2350,16 @@ async def cors_middleware(request, handler):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
+async def telegram_webhook_handler(request):
+    """Handle Telegram webhook updates"""
+    try:
+        data = await request.json()
+        await telegram_bot.process_telegram_update(data)
+        return web.Response(text="OK", status=200)
+    except Exception as e:
+        print(f"[!] Telegram webhook error: {e}")
+        return web.Response(text="Error", status=500)
+
 async def start_http_server(bot):
     """Start HTTP server for health checks and API"""
     app = web.Application(middlewares=[cors_middleware])
@@ -2364,6 +2374,9 @@ async def start_http_server(bot):
     app.router.add_options("/api/send", lambda r: web.Response())
     app.router.add_options("/api/delete", lambda r: web.Response())
     
+    # Telegram webhook endpoint
+    app.router.add_post("/telegram/webhook", telegram_webhook_handler)
+    
     # Get port from environment (Render sets PORT)
     port = int(os.environ.get("PORT", 10000))
     
@@ -2372,6 +2385,25 @@ async def start_http_server(bot):
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     print(f"[OK] HTTP server started on port {port}")
+    
+    # Set Telegram webhook
+    webhook_url = os.environ.get("WEBHOOK_URL", "https://robloxcheatztg.onrender.com")
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            tg_token = os.environ.get("TELEGRAM_TOKEN")
+            resp = await client.post(
+                f"https://api.telegram.org/bot{tg_token}/setWebhook",
+                json={"url": f"{webhook_url}/telegram/webhook"}
+            )
+            result = resp.json()
+            if result.get("ok"):
+                print(f"[OK] Telegram webhook set to {webhook_url}/telegram/webhook")
+            else:
+                print(f"[!] Failed to set Telegram webhook: {result}")
+    except Exception as e:
+        print(f"[!] Error setting Telegram webhook: {e}")
+    
     return runner
 
 
