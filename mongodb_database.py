@@ -3,7 +3,7 @@ MongoDB Database module - replaces SQLite for cloud deployment
 Stores email links, purchases, loyalty keys, rewards in MongoDB
 """
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 import os
@@ -439,3 +439,64 @@ async def init_database():
     import asyncio
     await asyncio.to_thread(get_db)
     print("[OK] MongoDB database initialized")
+
+
+# ============= ALIASES FOR COMPATIBILITY WITH bot.py =============
+
+async def get_all_verified_users() -> List[Dict[str, Any]]:
+    """Alias for get_all_users (compatibility)"""
+    return await get_all_users()
+
+
+async def add_loyalty_keys(discord_id: int, keys_to_add: int) -> int:
+    """Add multiple loyalty keys and return new balance"""
+    import asyncio
+    return await asyncio.to_thread(_sync_add_loyalty_keys, discord_id, keys_to_add)
+
+
+def _sync_add_loyalty_keys(discord_id: int, keys_to_add: int) -> int:
+    """Sync version of add_loyalty_keys"""
+    db = get_db()
+    result = db.loyalty_keys.find_one_and_update(
+        {"discord_id": discord_id},
+        {
+            "$inc": {"keys_balance": keys_to_add, "total_keys_earned": keys_to_add},
+            "$set": {"last_key_earned": datetime.now()}
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+    return result.get("keys_balance", 0) if result else keys_to_add
+
+
+async def issue_coupon(discord_id: int, coupon_code: str, discount_percent: int, level: int) -> bool:
+    """Alias for add_issued_coupon (compatibility)"""
+    return await add_issued_coupon(discord_id, coupon_code, discount_percent, level)
+
+
+async def unlink_email_by_email(email: str) -> bool:
+    """Unlink user by email"""
+    import asyncio
+    return await asyncio.to_thread(_sync_unlink_email_by_email, email)
+
+
+def _sync_unlink_email_by_email(email: str) -> bool:
+    """Sync version of unlink_email_by_email"""
+    db = get_db()
+    user = db.users.find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
+    if not user:
+        return False
+    
+    discord_id = user.get("discord_id")
+    db.users.delete_one({"discord_id": discord_id})
+    db.loyalty_keys.delete_one({"discord_id": discord_id})
+    db.purchase_history.delete_many({"discord_id": discord_id})
+    return True
+
+
+def generate_reward_code() -> str:
+    """Generate unique reward code"""
+    import random
+    import string
+    chars = string.ascii_uppercase + string.digits
+    return 'RW-' + ''.join(random.choices(chars, k=8))
