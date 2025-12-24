@@ -43,25 +43,31 @@ LOGO_URL = "https://raw.githubusercontent.com/TimPlay1/robloxcheatz/main/public/
 
 
 def load_authorized_users():
-    """Load authorized users from file"""
+    """Load authorized users from MongoDB"""
     global authorized_users
     try:
-        if os.path.exists(AUTHORIZED_USERS_FILE):
-            with open(AUTHORIZED_USERS_FILE, 'r') as f:
-                data = json.load(f)
-                authorized_users = set(data.get("users", []))
+        import asyncio
+        authorized_users = ticket_api.sync_get_authorized_users()
+        print(f"[OK] Loaded {len(authorized_users)} authorized Telegram users from MongoDB")
     except Exception as e:
         print(f"[!] Error loading authorized users: {e}")
         authorized_users = set()
 
 
-def save_authorized_users():
-    """Save authorized users to file"""
+def save_authorized_user(user_id: int):
+    """Save single authorized user to MongoDB"""
     try:
-        with open(AUTHORIZED_USERS_FILE, 'w') as f:
-            json.dump({"users": list(authorized_users)}, f)
+        ticket_api.sync_add_authorized_user(user_id)
     except Exception as e:
-        print(f"[!] Error saving authorized users: {e}")
+        print(f"[!] Error saving authorized user: {e}")
+
+
+def remove_authorized_user(user_id: int):
+    """Remove authorized user from MongoDB"""
+    try:
+        ticket_api.sync_remove_authorized_user(user_id)
+    except Exception as e:
+        print(f"[!] Error removing authorized user: {e}")
 
 
 def is_authorized(user_id: int) -> bool:
@@ -118,10 +124,11 @@ async def auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if key == SECRET_KEY:
         authorized_users.add(user_id)
-        save_authorized_users()
+        save_authorized_user(user_id)  # Save to MongoDB
         
         keyboard = [
             [InlineKeyboardButton("📋 Active Tickets", callback_data="list_tickets")],
+            [InlineKeyboardButton("🌐 Open Web Panel", web_app=WebAppInfo(url=WEBAPP_URL))],
             [InlineKeyboardButton("🔓 Logout", callback_data="logout")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -349,6 +356,7 @@ async def exit_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     keyboard = [
         [InlineKeyboardButton("📋 Active Tickets", callback_data="list_tickets")],
+        [InlineKeyboardButton("🌐 Open Web Panel", web_app=WebAppInfo(url=WEBAPP_URL))],
         [InlineKeyboardButton("🔓 Logout", callback_data="logout")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -367,7 +375,7 @@ async def logout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     if user_id in authorized_users:
         authorized_users.remove(user_id)
-        save_authorized_users()
+        remove_authorized_user(user_id)  # Remove from MongoDB
     
     if user_id in active_chats:
         del active_chats[user_id]
@@ -388,6 +396,7 @@ async def back_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     keyboard = [
         [InlineKeyboardButton("📋 Active Tickets", callback_data="list_tickets")],
+        [InlineKeyboardButton("🌐 Open Web Panel", web_app=WebAppInfo(url=WEBAPP_URL))],
         [InlineKeyboardButton("🔓 Logout", callback_data="logout")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)

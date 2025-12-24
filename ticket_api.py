@@ -46,6 +46,42 @@ def init_db():
         return False
 
 
+# ============= TELEGRAM AUTHORIZED USERS (MongoDB) =============
+
+def sync_get_authorized_users() -> set:
+    """Get all authorized Telegram user IDs from MongoDB"""
+    try:
+        auth_collection = db.telegram_authorized
+        users = auth_collection.find({})
+        return set(u["telegram_user_id"] for u in users)
+    except Exception as e:
+        print(f"[!] Error loading authorized users: {e}")
+        return set()
+
+
+def sync_add_authorized_user(telegram_user_id: int):
+    """Add authorized Telegram user to MongoDB"""
+    try:
+        auth_collection = db.telegram_authorized
+        auth_collection.update_one(
+            {"telegram_user_id": telegram_user_id},
+            {"$set": {"telegram_user_id": telegram_user_id, "authorized_at": datetime.now()}},
+            upsert=True
+        )
+        print(f"[OK] Authorized user {telegram_user_id} saved to MongoDB")
+    except Exception as e:
+        print(f"[!] Error saving authorized user: {e}")
+
+
+def sync_remove_authorized_user(telegram_user_id: int):
+    """Remove authorized Telegram user from MongoDB"""
+    try:
+        auth_collection = db.telegram_authorized
+        auth_collection.delete_one({"telegram_user_id": telegram_user_id})
+    except Exception as e:
+        print(f"[!] Error removing authorized user: {e}")
+
+
 def serialize_ticket(ticket):
     """Serialize ticket for JSON response"""
     if ticket:
