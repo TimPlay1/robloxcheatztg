@@ -10,6 +10,7 @@ from datetime import datetime
 from bson import ObjectId
 import os
 import json
+import certifi
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -32,12 +33,11 @@ def init_db():
     """Initialize MongoDB connection"""
     global client, db, tickets_collection
     try:
-        # Add TLS options for MongoDB Atlas
+        # Use certifi CA bundle for proper SSL
         client = MongoClient(
             MONGODB_URI,
-            tls=True,
-            tlsAllowInvalidCertificates=True,
-            serverSelectionTimeoutMS=5000,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=10000,
             connectTimeoutMS=10000
         )
         db = client.robloxcheatz

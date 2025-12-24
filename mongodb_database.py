@@ -7,6 +7,8 @@ from pymongo import MongoClient
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 import os
+import ssl
+import certifi
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,12 +24,11 @@ def get_db():
     """Get MongoDB database connection"""
     global _client, _db
     if _db is None:
-        # Add TLS options for MongoDB Atlas
+        # Use certifi CA bundle for proper SSL
         _client = MongoClient(
             MONGODB_URI,
-            tls=True,
-            tlsAllowInvalidCertificates=True,
-            serverSelectionTimeoutMS=5000,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=10000,
             connectTimeoutMS=10000
         )
         _db = _client.robloxcheatz
