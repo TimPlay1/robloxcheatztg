@@ -215,7 +215,7 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     channel_id = int(query.data.split("_")[1])
     
     # Get ticket from MongoDB
-    tickets = get_tickets_from_db()
+    tickets = await get_tickets_from_db()
     ticket = None
     for t in tickets:
         if t.get("channel_id") == channel_id:
@@ -302,7 +302,7 @@ async def delete_ticket_callback(update: Update, context: ContextTypes.DEFAULT_T
     channel_id = int(query.data.split("_")[1])
     
     # Find ticket info before deleting
-    tickets = get_tickets_from_db()
+    tickets = await get_tickets_from_db()
     ticket_info = None
     for t in tickets:
         if t.get("channel_id") == channel_id:
@@ -543,7 +543,7 @@ async def notify_ticket_closed(channel_id: int):
     global telegram_app
     
     # Get ticket info from DB
-    tickets = get_tickets_from_db()
+    tickets = await get_tickets_from_db()
     ticket_info = None
     for t in tickets:
         if t.get("channel_id") == channel_id:
