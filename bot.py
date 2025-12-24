@@ -1055,8 +1055,8 @@ class CloseTicketView(discord.ui.View):
             except Exception as e:
                 print(f"[!] Failed to notify Telegram about ticket closure: {e}")
         
-        # Delete ticket from MongoDB
-        ticket_api.sync_delete_ticket(channel.id)
+        # Delete ticket from MongoDB (non-blocking)
+        await asyncio.to_thread(ticket_api.sync_delete_ticket, channel.id)
         
         await interaction.response.send_message(f"{ui('time')} Ticket closing in 5 seconds...")
         await asyncio.sleep(5)
@@ -1268,11 +1268,12 @@ class ClaimRewardView(discord.ui.View):
 
 async def create_ticket_for_user(interaction: discord.Interaction, user_data: dict, is_priority: bool = False):
     """Create a ticket for user"""
+    import asyncio
     guild = interaction.guild
     user = interaction.user
     
-    # Check for existing ticket in MongoDB
-    existing_check = ticket_api.sync_get_user_active_ticket(user.id)
+    # Check for existing ticket in MongoDB (non-blocking)
+    existing_check = await asyncio.to_thread(ticket_api.sync_get_user_active_ticket, user.id)
     if existing_check.get("has_ticket"):
         existing_channel = guild.get_channel(existing_check["channel_id"])
         if existing_channel:
@@ -1286,7 +1287,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
             return
         else:
             # Channel deleted but ticket exists in DB - clean up
-            ticket_api.sync_delete_ticket(existing_check["channel_id"])
+            await asyncio.to_thread(ticket_api.sync_delete_ticket, existing_check["channel_id"])
     
     # Also check by channel name (backup)
     existing = discord.utils.get(guild.text_channels, name=f"ticket-{user.name.lower()}")
@@ -1326,8 +1327,9 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
         topic=f"{priority_mark}Ticket from {user} | Email: {mask_email(user_data['email'])} | Spent: ${total_spent:.2f}"
     )
     
-    # Save ticket to MongoDB
-    ticket_result = ticket_api.sync_create_ticket(
+    # Save ticket to MongoDB (non-blocking)
+    ticket_result = await asyncio.to_thread(
+        ticket_api.sync_create_ticket,
         channel_id=ticket_channel.id,
         discord_user_id=user.id,
         discord_username=user.display_name,
