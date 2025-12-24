@@ -428,11 +428,31 @@
             document.getElementById('input-area').style.display = 'block';
             document.getElementById('no-chat').style.display = 'none';
             
-            // Render messages
-            renderMessages(ticket.messages);
+            // Load messages from API
+            loadMessages(id);
             
             // Update tickets list
             renderTickets();
+        }
+        
+        async function loadMessages(channelId) {
+            const container = document.getElementById('messages');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/messages?channel_id=${channelId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    tickets[channelId].messages = data.messages || [];
+                    renderMessages(data.messages || []);
+                } else {
+                    container.innerHTML = '<p class="text-center text-gray-500 py-4">Error loading messages</p>';
+                }
+            } catch (error) {
+                console.error('Error loading messages:', error);
+                container.innerHTML = '<p class="text-center text-gray-500 py-4">Error loading messages</p>';
+            }
         }
         
         function renderMessages(msgs) {
@@ -465,7 +485,7 @@
             container.scrollTop = container.scrollHeight;
         }
         
-        function sendMessage() {
+        async function sendMessage() {
             if (!currentTicket) return;
             
             const input = document.getElementById('message-input');
@@ -473,33 +493,38 @@
             
             if (!text) return;
             
-            // Add message locally
-            const now = new Date();
-            const msg = {
-                sender: 'admin',
-                sender_type: 'webapp',
-                content: text,
-                timestamp: now.toISOString()
-            };
+            // Disable input while sending
+            input.disabled = true;
             
-            if (!tickets[currentTicket].messages) {
-                tickets[currentTicket].messages = [];
-            }
-            tickets[currentTicket].messages.push(msg);
-            
-            // Clear input
-            input.value = '';
-            
-            // Re-render
-            renderMessages(tickets[currentTicket].messages);
-            
-            // Send to Telegram bot (if connected)
-            if (tg.sendData) {
-                tg.sendData(JSON.stringify({
-                    action: 'send_message',
-                    ticket_id: currentTicket,
-                    text: text
-                }));
+            try {
+                const response = await fetch(`${API_URL}/api/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        channel_id: currentTicket,
+                        message: text
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Clear input
+                    input.value = '';
+                    
+                    // Reload messages to show the new one
+                    await loadMessages(currentTicket);
+                } else {
+                    alert('Error sending message: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Error sending message');
+            } finally {
+                input.disabled = false;
+                input.focus();
             }
         }
         
@@ -567,6 +592,13 @@
         
         // Refresh tickets every 30 seconds
         setInterval(loadTickets, 30000);
+        
+        // Refresh messages every 5 seconds if ticket is selected
+        setInterval(() => {
+            if (currentTicket) {
+                loadMessages(currentTicket);
+            }
+        }, 5000);
     </script>
 </body>
 </html>

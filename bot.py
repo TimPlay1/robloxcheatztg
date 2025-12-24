@@ -2320,6 +2320,58 @@ async def run_webhook_server():
         except Exception as e:
             return web.json_response({"success": False, "error": str(e)}, status=500)
     
+    async def api_send_message_handler(request):
+        """API endpoint to send message to Discord ticket"""
+        try:
+            data = await request.json()
+            channel_id = int(data.get('channel_id', 0))
+            message_text = data.get('message', '')
+            
+            if not channel_id or not message_text:
+                return web.json_response({"success": False, "error": "Missing channel_id or message"}, status=400)
+            
+            # Save message to database
+            await asyncio.to_thread(
+                ticket_api.sync_add_message,
+                channel_id,
+                "VIP Support",
+                "webapp",
+                message_text
+            )
+            
+            # Send to Discord channel
+            channel = discord_bot_instance.get_channel(channel_id) if discord_bot_instance else None
+            if channel:
+                import discord
+                embed = discord.Embed(
+                    description=message_text,
+                    color=0xFFD700  # Gold for admin
+                )
+                embed.set_author(name="👑 VIP Support", icon_url="https://i.imgur.com/8Q9Z0Zm.png")
+                embed.set_footer(text="Response via WebApp")
+                await channel.send(embed=embed)
+                return web.json_response({"success": True})
+            else:
+                return web.json_response({"success": False, "error": "Channel not found"}, status=404)
+        except Exception as e:
+            print(f"[!] API send message error: {e}")
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+    
+    async def api_get_messages_handler(request):
+        """API endpoint to get messages for a ticket"""
+        try:
+            channel_id = int(request.query.get('channel_id', 0))
+            if not channel_id:
+                return web.json_response({"success": False, "error": "Missing channel_id"}, status=400)
+            
+            ticket = await asyncio.to_thread(ticket_api.sync_get_ticket_by_channel, channel_id)
+            if ticket:
+                messages = ticket.get('messages', [])
+                return web.json_response({"success": True, "messages": messages})
+            return web.json_response({"success": False, "error": "Ticket not found"}, status=404)
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+    
     # Enable CORS middleware
     @web.middleware
     async def cors_middleware(request, handler):
@@ -2338,6 +2390,9 @@ async def run_webhook_server():
     app.router.add_post('/telegram-webhook', telegram_webhook_handler)
     app.router.add_get('/api/tickets', api_tickets_handler)
     app.router.add_get('/api/delete', api_delete_handler)
+    app.router.add_post('/api/send', api_send_message_handler)
+    app.router.add_get('/api/messages', api_get_messages_handler)
+    app.router.add_options('/api/send', lambda r: web.Response())  # CORS preflight
     
     port = int(os.environ.get('PORT', 10000))
     runner = web.AppRunner(app)
@@ -2348,8 +2403,13 @@ async def run_webhook_server():
     return runner
 
 
+# Global Discord bot instance for API access
+discord_bot_instance = None
+
+
 async def async_main():
     """Async main - runs webhook server and Discord bot together"""
+    global discord_bot_instance
     import asyncio
     
     # Start webhook server FIRST (Render needs port open quickly)
@@ -2357,6 +2417,7 @@ async def async_main():
     
     # Create and run Discord bot
     bot = VerificationBot()
+    discord_bot_instance = bot  # Store globally for API access
     
     try:
         await bot.start(config.DISCORD_TOKEN)

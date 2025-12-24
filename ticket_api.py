@@ -403,6 +403,16 @@ def sync_add_message(channel_id: int, sender: str, sender_type: str, content: st
         return False
 
 
+def sync_get_ticket_by_channel(channel_id: int) -> dict:
+    """Get ticket by channel ID"""
+    try:
+        ticket = tickets_collection.find_one({"channel_id": channel_id})
+        return serialize_ticket(ticket) if ticket else None
+    except Exception as e:
+        print(f"[!] Error getting ticket by channel: {e}")
+        return None
+
+
 # Initialize database on import
 init_db()
 
