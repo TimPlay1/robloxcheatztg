@@ -2259,61 +2259,51 @@ async def setup_infrastructure(guild: discord.Guild, bot):
 
 # ============= MAIN =============
 
-def main():
-    """Start the bot"""
-    import os
-    import json
-    import threading
-    import asyncio
-    from http.server import HTTPServer, BaseHTTPRequestHandler
+async def run_webhook_server(bot_instance):
+    """Run async webhook server using aiohttp"""
+    from aiohttp import web
     
-    # Queue for telegram updates (thread-safe communication)
-    telegram_update_queue = []
+    async def health_handler(request):
+        return web.Response(text="RobloxCheatz Bot is running!")
     
-    # HTTP server with Telegram webhook support
-    class WebhookHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(b'RobloxCheatz Bot is running!')
-        
-        def do_POST(self):
-            # Handle Telegram webhook
-            if self.path == '/telegram-webhook':
-                content_length = int(self.headers.get('Content-Length', 0))
-                post_data = self.rfile.read(content_length)
-                
-                try:
-                    update_data = json.loads(post_data.decode('utf-8'))
-                    # Process update in async context
-                    asyncio.run_coroutine_threadsafe(
-                        telegram_bot.process_telegram_update(update_data),
-                        bot.loop
-                    )
-                    self.send_response(200)
-                    self.end_headers()
-                    self.wfile.write(b'OK')
-                except Exception as e:
-                    print(f"[!] Telegram webhook error: {e}")
-                    self.send_response(500)
-                    self.end_headers()
-            else:
-                self.send_response(404)
-                self.end_headers()
-        
-        def log_message(self, format, *args):
-            pass  # Suppress logs
+    async def telegram_webhook_handler(request):
+        try:
+            update_data = await request.json()
+            # Process immediately in same event loop (fast!)
+            await telegram_bot.process_telegram_update(update_data)
+            return web.Response(text="OK")
+        except Exception as e:
+            print(f"[!] Telegram webhook error: {e}")
+            return web.Response(text="Error", status=500)
+    
+    app = web.Application()
+    app.router.add_get('/', health_handler)
+    app.router.add_get('/health', health_handler)
+    app.router.add_post('/telegram-webhook', telegram_webhook_handler)
     
     port = int(os.environ.get('PORT', 10000))
-    server = HTTPServer(('0.0.0.0', port), WebhookHandler)
-    
-    # Run webhook server in background thread
-    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-    server_thread.start()
-    print(f"[OK] Webhook server running on port {port}")
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"[OK] Async webhook server running on port {port}")
+
+
+def main():
+    """Start the bot"""
+    import asyncio
     
     bot = VerificationBot()
+    
+    # Override setup_hook to also start webhook server
+    original_setup_hook = bot.setup_hook
+    
+    async def extended_setup_hook():
+        await original_setup_hook()
+        # Start webhook server in background
+        asyncio.create_task(run_webhook_server(bot))
+    
+    bot.setup_hook = extended_setup_hook
     bot.run(config.DISCORD_TOKEN)
 
 
