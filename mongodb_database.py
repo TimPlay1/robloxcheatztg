@@ -3,7 +3,7 @@ MongoDB Database module - replaces SQLite for cloud deployment
 Stores email links, purchases, loyalty keys, rewards in MongoDB
 """
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 import os
@@ -439,3 +439,99 @@ async def init_database():
     import asyncio
     await asyncio.to_thread(get_db)
     print("[OK] MongoDB database initialized")
+
+
+# ============= COMPATIBILITY ALIASES =============
+
+async def get_all_verified_users() -> List[Dict[str, Any]]:
+    """Alias for get_all_users (compatibility with old code)"""
+    return await get_all_users()
+
+
+async def add_loyalty_keys(discord_id: int, keys_to_add: int) -> int:
+    """Add multiple loyalty keys and return new balance"""
+    import asyncio
+    return await asyncio.to_thread(_sync_add_loyalty_keys, discord_id, keys_to_add)
+
+
+def _sync_add_loyalty_keys(discord_id: int, keys_to_add: int) -> int:
+    """Sync version of add_loyalty_keys"""
+    db = get_db()
+    result = db.loyalty_keys.find_one_and_update(
+        {"discord_id": discord_id},
+        {
+            "$inc": {"keys_balance": keys_to_add, "total_keys_earned": keys_to_add},
+            "$set": {"last_key_earned": datetime.now()}
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+    return result.get("keys_balance", 0) if result else keys_to_add
+
+
+async def issue_coupon(discord_id: int, coupon_code: str, discount_percent: int, level: int) -> bool:
+    """Alias for add_issued_coupon (compatibility with old code)"""
+    return await add_issued_coupon(discord_id, coupon_code, discount_percent, level)
+
+
+async def unlink_email_by_email(email: str) -> bool:
+    """Unlink user by email address"""
+    import asyncio
+    return await asyncio.to_thread(_sync_unlink_email_by_email, email)
+
+
+def _sync_unlink_email_by_email(email: str) -> bool:
+    """Sync version of unlink_email_by_email"""
+    db = get_db()
+    user = db.users.find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
+    if not user:
+        return False
+    
+    discord_id = user.get("discord_id")
+    db.users.delete_one({"discord_id": discord_id})
+    db.loyalty_keys.delete_one({"discord_id": discord_id})
+    db.purchase_history.delete_many({"discord_id": discord_id})
+    return True
+
+
+async def use_loyalty_key(discord_id: int) -> bool:
+    """Use one loyalty key"""
+    import asyncio
+    return await asyncio.to_thread(_sync_use_loyalty_key, discord_id)
+
+
+def _sync_use_loyalty_key(discord_id: int) -> bool:
+    """Sync version of use_loyalty_key"""
+    db = get_db()
+    keys = db.loyalty_keys.find_one({"discord_id": discord_id})
+    if not keys or keys.get("keys_balance", 0) < 1:
+        return False
+    
+    db.loyalty_keys.update_one(
+        {"discord_id": discord_id},
+        {"$inc": {"keys_balance": -1, "total_keys_used": 1}}
+    )
+    return True
+
+
+def generate_reward_code() -> str:
+    """Generate unique reward code"""
+    import random
+    import string
+    chars = string.ascii_uppercase + string.digits
+    return 'RW-' + ''.join(random.choices(chars, k=8))
+
+
+async def get_all_users() -> List[Dict[str, Any]]:
+    """Get all verified users"""
+    import asyncio
+    return await asyncio.to_thread(_sync_get_all_users)
+
+
+def _sync_get_all_users() -> List[Dict[str, Any]]:
+    """Sync version of get_all_users"""
+    db = get_db()
+    users = list(db.users.find())
+    for user in users:
+        user["_id"] = str(user["_id"])
+    return users

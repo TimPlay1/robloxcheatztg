@@ -2117,6 +2117,12 @@ async def setup_infrastructure(guild: discord.Guild, bot):
                         send_messages=allow_send
                     )
                 
+                # Hide verify channel from verified users
+                if ch_name == "verify" and verified_role:
+                    overwrites[verified_role] = discord.PermissionOverwrite(
+                        read_messages=False
+                    )
+                
                 channel = await guild.create_text_channel(
                     name=ch_name,
                     category=category,
@@ -2128,6 +2134,12 @@ async def setup_infrastructure(guild: discord.Guild, bot):
             except Exception as e:
                 report["errors"].append(f"Channel {ch_name}: {e}")
         else:
+            # Update permissions for existing verify channel
+            if ch_name == "verify" and verified_role:
+                try:
+                    await channel.set_permissions(verified_role, read_messages=False)
+                except Exception as e:
+                    print(f"[!] Failed to update verify channel permissions: {e}")
             report["existing"].append(f"#️⃣ {ch_name}")
         
         channel_refs[ch_name] = channel

@@ -10,6 +10,7 @@ from datetime import datetime
 from bson import ObjectId
 import os
 import json
+import certifi
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -20,9 +21,6 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for WebApp
 
 # MongoDB connection
-# Free MongoDB Atlas: https://cloud.mongodb.com
-# Create a free cluster and get connection string
-# Format: mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>?retryWrites=true&w=majority
 MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/robloxcheatz")
 client = None
 db = None
@@ -32,18 +30,58 @@ def init_db():
     """Initialize MongoDB connection"""
     global client, db, tickets_collection
     try:
-        client = MongoClient(MONGODB_URI)
+        client = MongoClient(
+            MONGODB_URI,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000
+        )
         db = client.robloxcheatz
         tickets_collection = db.tickets
         # Create indexes
         tickets_collection.create_index("channel_id", unique=True)
         tickets_collection.create_index("discord_user_id")
         tickets_collection.create_index("status")
+        # Create authorized_users collection
+        db.telegram_authorized.create_index("telegram_user_id", unique=True)
         print("[OK] MongoDB connected successfully")
         return True
     except Exception as e:
         print(f"[!] MongoDB connection error: {e}")
         return False
+
+
+# ============= TELEGRAM AUTHORIZED USERS =============
+
+def sync_get_authorized_users() -> set:
+    """Get all authorized Telegram user IDs from MongoDB"""
+    try:
+        users = list(db.telegram_authorized.find({}))
+        return set(u["telegram_user_id"] for u in users)
+    except Exception as e:
+        print(f"[!] Error getting authorized users: {e}")
+        return set()
+
+
+def sync_add_authorized_user(telegram_user_id: int):
+    """Add authorized Telegram user to MongoDB"""
+    try:
+        db.telegram_authorized.update_one(
+            {"telegram_user_id": telegram_user_id},
+            {"$set": {"telegram_user_id": telegram_user_id, "authorized_at": datetime.now()}},
+            upsert=True
+        )
+        print(f"[OK] Authorized user {telegram_user_id} saved to MongoDB")
+    except Exception as e:
+        print(f"[!] Error saving authorized user: {e}")
+
+
+def sync_remove_authorized_user(telegram_user_id: int):
+    """Remove authorized Telegram user from MongoDB"""
+    try:
+        db.telegram_authorized.delete_one({"telegram_user_id": telegram_user_id})
+    except Exception as e:
+        print(f"[!] Error removing authorized user: {e}")
 
 
 def serialize_ticket(ticket):
