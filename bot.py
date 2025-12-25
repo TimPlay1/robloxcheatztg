@@ -2246,6 +2246,12 @@ async def setup_infrastructure(guild: discord.Guild, bot):
                         read_messages=False
                     )
                 
+                # Hide support channel from VIP users (they use vip-support)
+                if ch_name == "support" and priority_role:
+                    overwrites[priority_role] = discord.PermissionOverwrite(
+                        read_messages=False
+                    )
+                
                 channel = await guild.create_text_channel(
                     name=ch_name,
                     category=category,
@@ -2257,12 +2263,21 @@ async def setup_infrastructure(guild: discord.Guild, bot):
             except Exception as e:
                 report["errors"].append(f"Channel {ch_name}: {e}")
         else:
-            # Update permissions for existing verify channel
+            # Update permissions for existing channels
             if ch_name == "verify" and verified_role:
                 try:
                     await channel.set_permissions(verified_role, read_messages=False)
                 except Exception as e:
                     print(f"[!] Failed to update verify channel permissions: {e}")
+            
+            # Hide support from VIP users
+            if ch_name == "support" and priority_role:
+                try:
+                    await channel.set_permissions(priority_role, read_messages=False)
+                    print(f"  [OK] Hidden support channel from VIP users")
+                except Exception as e:
+                    print(f"[!] Failed to update support channel permissions: {e}")
+            
             report["existing"].append(f"#️⃣ {ch_name}")
         
         channel_refs[ch_name] = channel
@@ -2336,15 +2351,15 @@ async def setup_infrastructure(guild: discord.Guild, bot):
         else:
             rewards_text = ""
             for reward_type, value, chance, desc in config.REWARDS:
-                rewards_text += f"{ui('gift')} {desc} - {chance}%\n"
+                rewards_text += f"{ui('gift')} {desc} - {chance}%\n\n"  # Added extra newline for spacing
             
             embed = discord.Embed(
                 title=f"{ui('gift')} Loyalty Rewards",
                 description=(
                     f"**Earn keys through purchases!**\n\n"
                     f"{ui('key')} Every **{config.LOYALTY_SETTINGS['purchases_per_key']} purchases** = 1 Loyalty Key\n\n"
-                    f"**Available Rewards:**\n"
-                    f"{rewards_text}\n"
+                    f"**Available Rewards:**\n\n"
+                    f"{rewards_text}"
                     f"{ui('arrow_right')} Click the button below to use a key and claim a random reward:"
                 ),
                 color=config.COLORS["gold"]

@@ -582,6 +582,7 @@ async def notify_ticket_closed(channel_id: int):
 
 # ============= Telegram App Instance =============
 telegram_app: Optional[Application] = None
+telegram_polling_task = None  # For local polling mode
 
 
 def is_telegram_enabled() -> bool:
@@ -589,9 +590,31 @@ def is_telegram_enabled() -> bool:
     return bool(TELEGRAM_TOKEN and telegram_app)
 
 
+def is_local_mode() -> bool:
+    """Check if running in local mode (not on Render/Vercel)"""
+    webhook_url = os.environ.get("WEBHOOK_URL", "")
+    return "localhost" in webhook_url or not webhook_url or "onrender.com" not in webhook_url
+
+
+async def telegram_polling_loop():
+    """Run Telegram polling in background"""
+    global telegram_app
+    print("[OK] Starting Telegram polling loop...")
+    try:
+        await telegram_app.updater.start_polling(drop_pending_updates=True)
+        print("[OK] Telegram polling started!")
+        # Keep running
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        print("[!] Telegram polling cancelled")
+    except Exception as e:
+        print(f"[!] Telegram polling error: {e}")
+
+
 async def start_telegram_bot(discord_bot_instance):
-    """Start the Telegram bot (webhook mode for web service)"""
-    global telegram_app, discord_bot
+    """Start the Telegram bot (webhook or polling mode)"""
+    global telegram_app, discord_bot, telegram_polling_task
     
     discord_bot = discord_bot_instance
     
@@ -612,14 +635,27 @@ async def start_telegram_bot(discord_bot_instance):
         telegram_app.add_handler(CallbackQueryHandler(callback_handler))
         telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
-        # Initialize without polling (webhook mode - updates come via HTTP)
-        print("[OK] Telegram bot initializing (webhook mode)...")
+        # Initialize
         await telegram_app.initialize()
-        await telegram_app.start()
-        print("[OK] Telegram bot ready for webhooks!")
+        
+        if is_local_mode():
+            # Local mode - use polling
+            print("[OK] Telegram bot starting in POLLING mode (local)...")
+            await telegram_app.start()
+            # Start polling in background
+            telegram_polling_task = asyncio.create_task(telegram_polling_loop())
+            print("[OK] Telegram bot polling active!")
+        else:
+            # Production mode - use webhooks
+            print("[OK] Telegram bot initializing (webhook mode)...")
+            await telegram_app.start()
+            print("[OK] Telegram bot ready for webhooks!")
+        
         print(f"[OK] Authorized users: {len(authorized_users)}")
     except Exception as e:
+        import traceback
         print(f"[!] Failed to start Telegram bot: {e}")
+        traceback.print_exc()
         telegram_app = None
 
 
@@ -634,8 +670,19 @@ async def process_telegram_update(update_data: dict):
 
 async def stop_telegram_bot():
     """Stop the Telegram bot"""
-    global telegram_app
+    global telegram_app, telegram_polling_task
+    
+    if telegram_polling_task:
+        telegram_polling_task.cancel()
+        try:
+            await telegram_polling_task
+        except asyncio.CancelledError:
+            pass
+        telegram_polling_task = None
+    
     if telegram_app:
+        if telegram_app.updater and telegram_app.updater.running:
+            await telegram_app.updater.stop()
         await telegram_app.stop()
         await telegram_app.shutdown()
         print("[OK] Telegram bot stopped")
