@@ -43,18 +43,9 @@ def get_db():
 
 
 def calculate_level(total_spent: float) -> int:
-    """Calculate user level based on total spent"""
-    if total_spent >= 200:
-        return 5
-    elif total_spent >= 100:
-        return 4
-    elif total_spent >= 70:
-        return 3
-    elif total_spent >= 30:
-        return 2
-    elif total_spent >= 10:
-        return 1
-    return 0
+    """Calculate user level based on total spent (10 levels, every $10 = +1 level)"""
+    level = int(total_spent // 10)
+    return min(level, 10)  # Max level is 10
 
 
 # ============= USER FUNCTIONS =============
