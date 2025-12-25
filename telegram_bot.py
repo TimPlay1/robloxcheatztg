@@ -601,6 +601,10 @@ async def telegram_polling_loop():
     global telegram_app
     print("[OK] Starting Telegram polling loop...")
     try:
+        # Delete any existing webhook first
+        await telegram_app.bot.delete_webhook(drop_pending_updates=True)
+        print("[OK] Webhook deleted, starting polling...")
+        
         await telegram_app.updater.start_polling(drop_pending_updates=True)
         print("[OK] Telegram polling started!")
         # Keep running
