@@ -101,6 +101,10 @@ def _sync_link_email_to_discord(discord_id: int, email: str, total_spent: float 
     level = calculate_level(total_spent)
     
     try:
+        # Check if this email was previously linked (to preserve keys_already_claimed)
+        existing_email_record = db.email_keys_tracking.find_one({"email": email.lower()})
+        keys_already_claimed = existing_email_record.get("keys_claimed", 0) if existing_email_record else 0
+        
         db.users.update_one(
             {"discord_id": discord_id},
             {
@@ -111,7 +115,8 @@ def _sync_link_email_to_discord(discord_id: int, email: str, total_spent: float 
                     "purchase_count": purchase_count,
                     "level": level,
                     "verified_at": datetime.now(),
-                    "last_updated": datetime.now()
+                    "last_updated": datetime.now(),
+                    "keys_already_claimed": keys_already_claimed  # Track keys from previous verifications
                 }
             },
             upsert=True
@@ -169,6 +174,30 @@ async def unlink_email(discord_id: int) -> bool:
 def _sync_unlink_email(discord_id: int) -> bool:
     """Sync version of unlink_email"""
     db = get_db()
+    
+    # Get user data before deleting to track keys
+    user_data = db.users.find_one({"discord_id": discord_id})
+    keys_data = db.loyalty_keys.find_one({"discord_id": discord_id})
+    
+    if user_data and keys_data:
+        email = user_data.get("email", "").lower()
+        total_keys_earned = keys_data.get("total_keys_earned", 0)
+        previous_claimed = user_data.get("keys_already_claimed", 0)
+        
+        # Save total keys ever claimed for this email
+        if email:
+            db.email_keys_tracking.update_one(
+                {"email": email},
+                {
+                    "$set": {
+                        "email": email,
+                        "keys_claimed": total_keys_earned + previous_claimed,
+                        "last_updated": datetime.now()
+                    }
+                },
+                upsert=True
+            )
+    
     result = db.users.delete_one({"discord_id": discord_id})
     db.loyalty_keys.delete_one({"discord_id": discord_id})
     db.purchase_history.delete_many({"discord_id": discord_id})
@@ -535,3 +564,96 @@ def _sync_get_all_users() -> List[Dict[str, Any]]:
     for user in users:
         user["_id"] = str(user["_id"])
     return users
+
+
+# ============= VERIFICATION CODE FUNCTIONS =============
+
+async def save_verification_code(discord_id: int, email: str, code: str, expires_at: datetime) -> bool:
+    """Save email verification code"""
+    import asyncio
+    return await asyncio.to_thread(_sync_save_verification_code, discord_id, email, code, expires_at)
+
+
+def _sync_save_verification_code(discord_id: int, email: str, code: str, expires_at: datetime) -> bool:
+    """Sync version of save_verification_code"""
+    db = get_db()
+    try:
+        db.verification_codes.update_one(
+            {"discord_id": discord_id},
+            {
+                "$set": {
+                    "discord_id": discord_id,
+                    "email": email.lower(),
+                    "code": code,
+                    "expires_at": expires_at,
+                    "verified": False,
+                    "created_at": datetime.utcnow()
+                }
+            },
+            upsert=True
+        )
+        return True
+    except Exception as e:
+        print(f"[!] Error saving verification code: {e}")
+        return False
+
+
+async def get_verification_code(discord_id: int) -> Optional[Dict[str, Any]]:
+    """Get pending verification code for discord user"""
+    import asyncio
+    return await asyncio.to_thread(_sync_get_verification_code, discord_id)
+
+
+def _sync_get_verification_code(discord_id: int) -> Optional[Dict[str, Any]]:
+    """Sync version of get_verification_code"""
+    db = get_db()
+    code_data = db.verification_codes.find_one({"discord_id": discord_id})
+    if code_data:
+        code_data["_id"] = str(code_data["_id"])
+    return code_data
+
+
+async def verify_code(discord_id: int, entered_code: str) -> dict:
+    """Verify the entered code - returns {success: bool, error: str|None, email: str|None}"""
+    import asyncio
+    return await asyncio.to_thread(_sync_verify_code, discord_id, entered_code)
+
+
+def _sync_verify_code(discord_id: int, entered_code: str) -> dict:
+    """Sync version of verify_code"""
+    db = get_db()
+    code_data = db.verification_codes.find_one({"discord_id": discord_id})
+    
+    if not code_data:
+        return {"success": False, "error": "No pending verification. Please enter your email first.", "email": None}
+    
+    if code_data.get("verified"):
+        return {"success": False, "error": "Code already used.", "email": None}
+    
+    if datetime.utcnow() > code_data.get("expires_at", datetime.utcnow()):
+        return {"success": False, "error": "Code expired. Please request a new code.", "email": None}
+    
+    if code_data.get("code") != entered_code:
+        return {"success": False, "error": "Invalid code. Please check and try again.", "email": None}
+    
+    # Mark as verified
+    db.verification_codes.update_one(
+        {"discord_id": discord_id},
+        {"$set": {"verified": True}}
+    )
+    
+    return {"success": True, "error": None, "email": code_data.get("email")}
+
+
+async def delete_verification_code(discord_id: int) -> bool:
+    """Delete verification code after successful verification"""
+    import asyncio
+    return await asyncio.to_thread(_sync_delete_verification_code, discord_id)
+
+
+def _sync_delete_verification_code(discord_id: int) -> bool:
+    """Sync version of delete_verification_code"""
+    db = get_db()
+    result = db.verification_codes.delete_one({"discord_id": discord_id})
+    return result.deleted_count > 0
+

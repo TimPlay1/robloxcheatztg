@@ -10,8 +10,9 @@ from discord.ext import commands, tasks
 import asyncio
 import aiohttp
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, List
+import random
 
 import config
 import mongodb_database as database  # Use MongoDB for cloud deployment
@@ -25,6 +26,42 @@ from utils import (
 )
 import telegram_bot
 import ticket_api
+from email_service import email_service
+
+
+# ============= HELPER FUNCTION =============
+
+def generate_verification_code() -> str:
+    """Generate random 6-digit verification code"""
+    return str(random.randint(100000, 999999))
+
+async def send_ephemeral_auto_delete(interaction: discord.Interaction, content=None, embed=None, view=None, delete_after: int = 15):
+    """Send ephemeral followup message that auto-deletes after specified seconds"""
+    try:
+        # Build kwargs - only include view if it's not None
+        kwargs = {"ephemeral": True}
+        if content is not None:
+            kwargs["content"] = content
+        if embed is not None:
+            kwargs["embed"] = embed
+        if view is not None:
+            kwargs["view"] = view
+        
+        msg = await interaction.followup.send(**kwargs)
+        if delete_after and msg:
+            asyncio.create_task(_delete_after(msg, delete_after))
+        return msg
+    except Exception as e:
+        print(f"[!] Error sending ephemeral message: {e}")
+        return None
+
+async def _delete_after(msg, seconds):
+    """Helper to delete message after delay"""
+    await asyncio.sleep(seconds)
+    try:
+        await msg.delete()
+    except:
+        pass
 
 
 # ============= CONSTANTS =============
@@ -750,21 +787,17 @@ class VerificationBot(commands.Bot):
         import random
         
         statuses = [
-            # Gaming statuses
-            discord.Game(name="🎮 Dominating Roblox | robloxcheatz.com"),
-            discord.Game(name="⚡ Premium Exploits | robloxcheatz.com"),
-            discord.Game(name="🔥 Undetected & Safe | robloxcheatz.com"),
-            discord.Game(name="🛡️ Verify to Unlock | robloxcheatz.com"),
-            discord.Game(name="💎 VIP Support Available | robloxcheatz.com"),
-            discord.Game(name="🎁 Loyalty Rewards | robloxcheatz.com"),
-            discord.Game(name="🚀 Wave & Seliware | robloxcheatz.com"),
-            # Watching statuses
-            discord.Activity(type=discord.ActivityType.watching, name="over verified members 👀"),
-            discord.Activity(type=discord.ActivityType.watching, name=f"{len(self.guilds)} servers 🌐"),
-            # Listening statuses  
-            discord.Activity(type=discord.ActivityType.listening, name="support tickets 🎫"),
-            # Competing statuses
-            discord.Activity(type=discord.ActivityType.competing, name="Roblox exploits market 🏆"),
+            # Short gaming statuses with site
+            discord.Game(name="🎮 robloxcheatz.com"),
+            discord.Game(name="⚡ robloxcheatz.com"),
+            discord.Game(name="🔥 robloxcheatz.com"),
+            discord.Game(name="🛡️ robloxcheatz.com"),
+            discord.Game(name="💎 robloxcheatz.com"),
+            discord.Game(name="🎁 robloxcheatz.com"),
+            discord.Game(name="🚀 robloxcheatz.com"),
+            discord.Game(name="💰 robloxcheatz.com"),
+            discord.Game(name="🏆 robloxcheatz.com"),
+            discord.Game(name="✨ robloxcheatz.com"),
         ]
         
         # Pick random status
@@ -795,8 +828,8 @@ class VerifyButtonView(discord.ui.View):
         await interaction.response.send_modal(VerifyModal())
 
 
-class VerifyModal(discord.ui.Modal, title="Account Verification"):
-    """Modal for email input"""
+class VerifyModal(discord.ui.Modal, title="Step 1: Enter Email"):
+    """Modal for email input - Step 1 of verification"""
     
     email = discord.ui.TextInput(
         label="Purchase Email",
@@ -818,7 +851,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+            await send_ephemeral_auto_delete(interaction, embed=embed)
             return
         
         # Check if already verified
@@ -831,7 +864,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["warning"]
             )
             embed.set_thumbnail(url=UI_ICONS["warning"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+            await send_ephemeral_auto_delete(interaction, embed=embed)
             return
         
         # Check if email already linked
@@ -844,7 +877,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["warning"]
             )
             embed.set_thumbnail(url=UI_ICONS["warning"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+            await send_ephemeral_auto_delete(interaction, embed=embed)
             return
         
         # Check email in API
@@ -864,8 +897,162 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["search"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+            await send_ephemeral_auto_delete(interaction, embed=embed)
             return
+        
+        # Get purchase data
+        try:
+            total_spent = await asyncio.wait_for(
+                komerza_api.get_customer_total_spent(email),
+                timeout=10.0
+            )
+        except asyncio.TimeoutError:
+            total_spent = 0
+        
+        # Check minimum purchase
+        if total_spent < 10:
+            embed = discord.Embed(
+                title=f"{ui('cross')} Insufficient Purchases",
+                description=f"{ui('dollar')} Minimum $10 in purchases required for verification.\n\n"
+                           f"{ui('cart')} Your current total: {format_currency(total_spent)}",
+                color=config.COLORS["error"]
+            )
+            embed.set_thumbnail(url=UI_ICONS["dollar"])
+            await send_ephemeral_auto_delete(interaction, embed=embed)
+            return
+        
+        # Generate 6-digit verification code
+        code = generate_verification_code()
+        expires_at = datetime.utcnow() + timedelta(minutes=30)
+        
+        # Save code to database
+        await database.save_verification_code(interaction.user.id, email, code, expires_at)
+        
+        # Try to send email with code
+        email_result = await email_service.send_verification_code(
+            to_email=email,
+            code=code,
+            username=interaction.user.display_name
+        )
+        
+        if email_result["success"]:
+            # Email sent successfully
+            embed = discord.Embed(
+                title=f"{ui('email')} Verification Code Sent!",
+                description=f"{ui('check')} Email found: `{mask_email(email)}`\n\n"
+                           f"{ui('send')} A **6-digit verification code** has been sent to your email.\n\n"
+                           f"{ui('time')} This code expires in **30 minutes**.\n\n"
+                           f"{ui('warning')} **Check your spam/junk folder** if you don't see it!\n\n"
+                           f"{ui('info')} Click **Enter Code** below to complete verification.",
+                color=config.COLORS["primary"]
+            )
+        else:
+            # Email service not configured or failed - show code directly
+            embed = discord.Embed(
+                title=f"{ui('email')} Verification Code",
+                description=f"{ui('check')} Email found: `{mask_email(email)}`\n\n"
+                           f"**Your verification code:**\n"
+                           f"# `{code}`\n\n"
+                           f"{ui('time')} This code expires in **30 minutes**.\n\n"
+                           f"{ui('info')} Click **Enter Code** below to complete verification.",
+                color=config.COLORS["primary"]
+            )
+        
+        embed.set_thumbnail(url=UI_ICONS["email"])
+        embed.set_footer(text="If you didn't request this, you can safely ignore it.")
+        
+        # Send with Enter Code and Resend buttons
+        view = VerificationCodeView(email)
+        await send_ephemeral_auto_delete(interaction, embed=embed, view=view, delete_after=300)  # 5 minutes
+
+
+class VerificationCodeView(discord.ui.View):
+    """View with Enter Code and Resend Code buttons"""
+    
+    def __init__(self, email: str):
+        super().__init__(timeout=300)  # 5 minutes
+        self.email = email
+    
+    @discord.ui.button(label="Enter Code", style=discord.ButtonStyle.success, emoji="🔑")
+    async def enter_code(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Open modal to enter verification code"""
+        await interaction.response.send_modal(VerifyCodeModal(self.email))
+    
+    @discord.ui.button(label="Resend Code", style=discord.ButtonStyle.secondary, emoji="🔄")
+    async def resend_code(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Resend verification code"""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Generate new code
+        code = generate_verification_code()
+        expires_at = datetime.utcnow() + timedelta(minutes=30)
+        
+        # Save new code
+        await database.save_verification_code(interaction.user.id, self.email, code, expires_at)
+        
+        # Try to send email with new code
+        email_result = await email_service.send_verification_code(
+            to_email=self.email,
+            code=code,
+            username=interaction.user.display_name
+        )
+        
+        if email_result["success"]:
+            embed = discord.Embed(
+                title=f"{ui('refresh')} New Code Sent!",
+                description=f"{ui('send')} A new verification code has been sent to your email.\n\n"
+                           f"{ui('time')} This code expires in **30 minutes**.\n\n"
+                           f"{ui('warning')} **Check your spam/junk folder** if you don't see it!",
+                color=config.COLORS["primary"]
+            )
+        else:
+            embed = discord.Embed(
+                title=f"{ui('refresh')} New Code Generated!",
+                description=f"**Your new verification code:**\n"
+                           f"# `{code}`\n\n"
+                           f"{ui('time')} This code expires in **30 minutes**.",
+                color=config.COLORS["primary"]
+            )
+        
+        embed.set_thumbnail(url=UI_ICONS["email"])
+        
+        await send_ephemeral_auto_delete(interaction, embed=embed, view=self, delete_after=300)
+
+
+class VerifyCodeModal(discord.ui.Modal, title="Step 2: Enter Code"):
+    """Modal for verification code input"""
+    
+    def __init__(self, email: str):
+        super().__init__()
+        self.email = email
+    
+    code = discord.ui.TextInput(
+        label="Verification Code",
+        placeholder="Enter the 6-digit code",
+        required=True,
+        min_length=6,
+        max_length=6
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        entered_code = str(self.code.value).strip()
+        
+        # Verify code
+        result = await database.verify_code(interaction.user.id, entered_code)
+        
+        if not result["success"]:
+            embed = discord.Embed(
+                title=f"{ui('cross')} Verification Failed",
+                description=f"{ui('warning')} {result['error']}",
+                color=config.COLORS["error"]
+            )
+            embed.set_thumbnail(url=UI_ICONS["cross"])
+            await send_ephemeral_auto_delete(interaction, embed=embed)
+            return
+        
+        email = result["email"]
         
         # Get purchase data
         try:
@@ -881,18 +1068,6 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
             total_spent = 0
             purchase_count = 0
         
-        # Check minimum purchase
-        if total_spent < 10:
-            embed = discord.Embed(
-                title=f"{ui('cross')} Insufficient Purchases",
-                description=f"{ui('dollar')} Minimum $10 in purchases required for verification.\n\n"
-                           f"{ui('cart')} Your current total: {format_currency(total_spent)}",
-                color=config.COLORS["error"]
-            )
-            embed.set_thumbnail(url=UI_ICONS["dollar"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
-            return
-        
         # Link email
         success = await database.link_email_to_discord(
             interaction.user.id, email, total_spent, purchase_count
@@ -905,8 +1080,11 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+            await send_ephemeral_auto_delete(interaction, embed=embed)
             return
+        
+        # Delete verification code
+        await database.delete_verification_code(interaction.user.id)
         
         # Assign roles
         level = database.calculate_level(total_spent)
@@ -918,7 +1096,11 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
             product_roles = await bot.role_manager.assign_product_roles(interaction.user, email)
         
         # Calculate initial loyalty keys
-        initial_keys = purchase_count // config.LOYALTY_SETTINGS["purchases_per_key"]
+        user_data = await database.get_user_by_discord_id(interaction.user.id)
+        keys_already_claimed = user_data.get("keys_already_claimed", 0) if user_data else 0
+        total_possible_keys = purchase_count // config.LOYALTY_SETTINGS["purchases_per_key"]
+        initial_keys = max(0, total_possible_keys - keys_already_claimed)
+        
         if initial_keys > 0:
             await database.add_loyalty_keys(interaction.user.id, initial_keys)
         
@@ -993,7 +1175,7 @@ class VerifyModal(discord.ui.Modal, title="Account Verification"):
         embed.set_footer(text="Welcome to the RobloxCheatz community! Check your DMs for details.")
         embed.timestamp = datetime.now()
         
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed)
         
         # Send permanent copy to DM
         try:
@@ -1075,7 +1257,7 @@ class TicketView(discord.ui.View):
                     color=config.COLORS["error"]
                 )
                 embed.set_thumbnail(url=UI_ICONS["lock"])
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await send_ephemeral_auto_delete(interaction, embed=embed)
                 return
             
             is_priority = user_data.get("total_spent", 0) >= 70
@@ -1091,7 +1273,7 @@ class TicketView(discord.ui.View):
                     description=f"{ui('warning')} An error occurred. Please try again.",
                     color=config.COLORS["error"]
                 )
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
+                await send_ephemeral_auto_delete(interaction, embed=error_embed)
             except:
                 pass
 
@@ -1158,14 +1340,14 @@ class PriorityTicketView(discord.ui.View):
                 color=config.COLORS["error"]
             )
             embed.set_thumbnail(url=UI_ICONS["crown"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+            msg = await send_ephemeral_auto_delete(interaction, embed=embed)
             return
         
         await create_ticket_for_user(interaction, user_data, is_priority=True)
 
 
 class ClaimRewardView(discord.ui.View):
-    """Claim reward button"""
+    """Claim reward button with Info button"""
     
     def __init__(self):
         super().__init__(timeout=None)
@@ -1197,7 +1379,7 @@ class ClaimRewardView(discord.ui.View):
                     color=config.COLORS["error"]
                 )
                 embed.set_thumbnail(url=UI_ICONS["lock"])
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await send_ephemeral_auto_delete(interaction, embed=embed)
                 return
             
             # Check keys balance
@@ -1217,7 +1399,7 @@ class ClaimRewardView(discord.ui.View):
                     color=config.COLORS["warning"]
                 )
                 embed.set_thumbnail(url=UI_ICONS["key"])
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await send_ephemeral_auto_delete(interaction, embed=embed)
                 return
             
             # Use a key
@@ -1231,7 +1413,7 @@ class ClaimRewardView(discord.ui.View):
                     color=config.COLORS["error"]
                 )
                 embed.set_thumbnail(url=UI_ICONS["cross"])
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await send_ephemeral_auto_delete(interaction, embed=embed)
                 return
             
             # Roll for reward
@@ -1292,7 +1474,7 @@ class ClaimRewardView(discord.ui.View):
             embed.set_footer(text="Thank you for your loyalty! Check your DMs for a copy.")
             embed.timestamp = datetime.now()
             
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await send_ephemeral_auto_delete(interaction, embed=embed)
             print(f"[CLAIM_REWARD] Reward sent to {interaction.user}: {reward_desc}")
             
             # Send reward to DM as well (permanent copy)
@@ -1360,7 +1542,161 @@ class ClaimRewardView(discord.ui.View):
                     description=f"{ui('warning')} An error occurred while claiming your reward. Please try again.",
                     color=config.COLORS["error"]
                 )
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
+                await send_ephemeral_auto_delete(interaction, embed=error_embed)
+            except:
+                pass
+
+    @discord.ui.button(
+        label="My Stats",
+        style=discord.ButtonStyle.secondary,
+        custom_id="my_stats",
+        emoji="📊"
+    )
+    async def my_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show user's detailed statistics"""
+        print(f"[MY_STATS] User {interaction.user} clicked My Stats button")
+        
+        try:
+            await interaction.response.defer(ephemeral=True)
+            print(f"[MY_STATS] Deferred response for {interaction.user}")
+        except Exception as e:
+            print(f"[MY_STATS] Failed to defer: {e}")
+            return
+        
+        try:
+            # Get user data
+            user_data = await database.get_user_by_discord_id(interaction.user.id)
+            print(f"[MY_STATS] User data: {user_data}")
+            
+            if not user_data:
+                embed = discord.Embed(
+                    title=f"{ui('cross')} Not Verified",
+                    description=f"{ui('lock')} You need to verify your purchase email first.\n\n"
+                               f"{ui('arrow_right')} Go to the verification channel and click **Verify Account**.",
+                    color=config.COLORS["error"]
+                )
+                embed.set_thumbnail(url=UI_ICONS["lock"])
+                await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
+                print(f"[MY_STATS] Sent 'not verified' message")
+                return
+            
+            # Get keys data
+            keys_data = await database.get_user_keys(interaction.user.id)
+            print(f"[MY_STATS] Keys data: {keys_data}")
+            
+            # Get products owned
+            products = await komerza_api.get_customer_products(user_data["email"])
+            # Handle products - can be list of strings or list of dicts
+            if products:
+                if isinstance(products[0], dict):
+                    product_list = list(set(p.get("name", str(p)) for p in products))
+                else:
+                    product_list = list(set(products))
+            else:
+                product_list = []
+            print(f"[MY_STATS] Products: {len(product_list)}")
+            
+            # Calculate level
+            total_spent = user_data.get("total_spent", 0)
+            level = database.calculate_level(total_spent)
+            level_name = get_level_name(level)
+        
+            # Create embed
+            embed = discord.Embed(
+                title=f"{ui('chart')} Your Statistics",
+                description=f"{ui('user')} Stats for **{interaction.user.display_name}**",
+                color=get_embed_color(level)
+            )
+            embed.set_thumbnail(url=interaction.user.display_avatar.url if interaction.user.display_avatar else UI_ICONS["user"])
+            
+            # Purchase info
+            embed.add_field(
+                name=f"{ui('dollar')} Total Spent",
+                value=format_currency(total_spent),
+                inline=True
+            )
+            
+            embed.add_field(
+                name=f"{ui('level')} Level",
+                value=f"**{level}** ({level_name})",
+                inline=True
+            )
+            
+            embed.add_field(
+                name=f"{ui('cart')} Purchases",
+                value=str(user_data.get("purchase_count", 0)),
+                inline=True
+            )
+            
+            # Keys info
+            embed.add_field(
+                name=f"{ui('key')} Keys Balance",
+                value=str(keys_data.get("keys_balance", 0)),
+                inline=True
+            )
+            
+            embed.add_field(
+                name=f"{ui('check')} Keys Earned",
+                value=str(keys_data.get("total_keys_earned", 0)),
+                inline=True
+            )
+            
+            embed.add_field(
+                name=f"{ui('gift')} Keys Used",
+                value=str(keys_data.get("total_keys_used", 0)),
+                inline=True
+            )
+            
+            # Products owned
+            if product_list:
+                products_str = "\n".join([f"{ui('star')} {p}" for p in product_list[:10]])
+                if len(product_list) > 10:
+                    products_str += f"\n... and {len(product_list) - 10} more"
+            else:
+                products_str = f"{ui('info')} No products found"
+            
+            embed.add_field(
+                name=f"{ui('cart')} Products Owned ({len(product_list)})",
+                value=products_str,
+                inline=False
+            )
+            
+            # Progress to next level
+            progress = get_level_progress(total_spent)
+            if progress["next_level"]:
+                progress_bar = create_progress_bar(progress["progress"])
+                embed.add_field(
+                    name=f"{ui('chart')} Progress to Level {progress['next_level']}",
+                    value=f"{progress_bar} {progress['progress']:.0f}%\n"
+                         f"{ui('dollar')} {format_currency(progress['needed_for_next'])} more needed",
+                    inline=False
+                )
+            
+            # Email (masked)
+            embed.add_field(
+                name=f"{ui('email')} Linked Email",
+                value=f"`{mask_email(user_data['email'])}`",
+                inline=False
+            )
+            
+            embed.set_footer(text="Stats are updated automatically • This message will delete in 1 minute")
+            embed.timestamp = datetime.now()
+            
+            # Send with 60 second delete
+            await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
+            print(f"[MY_STATS] Sent stats embed for {interaction.user}")
+        
+        except Exception as e:
+            print(f"[MY_STATS] ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                error_embed = discord.Embed(
+                    title="Error",
+                    description=f"An error occurred: {str(e)[:200]}",
+                    color=config.COLORS["error"]
+                )
+                await send_ephemeral_auto_delete(interaction, embed=error_embed)
             except:
                 pass
 
@@ -1383,7 +1719,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
                 color=config.COLORS["warning"]
             )
             embed.set_thumbnail(url=UI_ICONS["ticket"])
-            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+            await send_ephemeral_auto_delete(interaction, embed=embed)
             return
         else:
             # Channel deleted but ticket exists in DB - clean up
@@ -1398,7 +1734,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
             color=config.COLORS["warning"]
         )
         embed.set_thumbnail(url=UI_ICONS["ticket"])
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed)
         return
     
     # Find tickets category
@@ -1446,7 +1782,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
             description=f"{ui('warning')} Failed to create ticket. Please try again.",
             color=config.COLORS["error"]
         )
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed)
         return
     
     # Send welcome message
@@ -1473,7 +1809,7 @@ async def create_ticket_for_user(interaction: discord.Interaction, user_data: di
         color=config.COLORS["success"]
     )
     success_embed.set_thumbnail(url=UI_ICONS["ticket"])
-    await interaction.followup.send(embed=success_embed, ephemeral=True, delete_after=15)
+    await send_ephemeral_auto_delete(interaction, embed=success_embed)
     
     # Send Telegram notification for VIP tickets
     if is_priority:
@@ -1514,13 +1850,13 @@ class AdminCog(commands.Cog):
         email: Optional[str] = None
     ):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
         
         if not user and not email:
-            await interaction.followup.send(f"{ui('cross')} Specify a user or email", ephemeral=True, delete_after=15)
+            await interaction.followup.send(f"{ui('cross')} Specify a user or email", ephemeral=True)
             return
         
         success = False
@@ -1560,7 +1896,7 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
     
     @app_commands.command(name="admin_lookup", description="[ADMIN] View user information")
     @app_commands.describe(
@@ -1574,7 +1910,7 @@ class AdminCog(commands.Cog):
         email: Optional[str] = None
     ):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1586,8 +1922,22 @@ class AdminCog(commands.Cog):
             user_data = await database.get_user_by_email(email)
         
         if not user_data:
-            await interaction.followup.send(f"{ui('cross')} User not found", ephemeral=True, delete_after=15)
+            await interaction.followup.send(f"{ui('cross')} User not found", ephemeral=True)
             return
+        
+        # Fetch fresh data from API
+        try:
+            fresh_total = await komerza_api.get_customer_total_spent(user_data["email"])
+            fresh_count = await komerza_api.get_customer_purchase_count(user_data["email"])
+            
+            # Update database if values changed
+            if fresh_total != user_data.get("total_spent") or fresh_count != user_data.get("purchase_count"):
+                await database.update_user_stats(user_data["discord_id"], fresh_total, fresh_count)
+                user_data["total_spent"] = fresh_total
+                user_data["purchase_count"] = fresh_count
+                user_data["level"] = database.calculate_level(fresh_total)
+        except Exception as e:
+            print(f"[ADMIN_LOOKUP] Could not fetch fresh data: {e}")
         
         keys_data = await database.get_user_keys(user_data["discord_id"])
         
@@ -1608,12 +1958,12 @@ class AdminCog(commands.Cog):
         embed.add_field(name=f"{ui('key')} Loyalty Keys", value=str(keys_data["keys_balance"]), inline=True)
         embed.add_field(name=f"{ui('time')} Verified At", value=user_data["verified_at"], inline=True)
         
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
     
     @app_commands.command(name="admin_sync", description="[ADMIN] Sync all users")
     async def admin_sync(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1624,18 +1974,27 @@ class AdminCog(commands.Cog):
             color=config.COLORS["primary"]
         )
         embed.set_thumbnail(url=UI_ICONS["refresh"])
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        msg = await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
         
-        komerza_api.clear_cache()
-        await self.bot.sync_purchases()
-        
-        embed = discord.Embed(
-            title=f"{ui('success')} Sync Complete",
-            description=f"{ui('check')} All users have been synced.",
-            color=config.COLORS["success"]
-        )
-        embed.set_thumbnail(url=UI_ICONS["success"])
-        await interaction.edit_original_response(embed=embed)
+        try:
+            komerza_api.clear_cache()
+            await self.bot.sync_purchases()
+            
+            embed = discord.Embed(
+                title=f"{ui('success')} Sync Complete",
+                description=f"{ui('check')} All users have been synced.",
+                color=config.COLORS["success"]
+            )
+            embed.set_thumbnail(url=UI_ICONS["success"])
+            await interaction.edit_original_response(embed=embed)
+        except Exception as e:
+            print(f"[ADMIN_SYNC] Error: {e}")
+            embed = discord.Embed(
+                title=f"{ui('cross')} Sync Error",
+                description=f"{ui('warning')} Error during sync: {str(e)[:200]}",
+                color=config.COLORS["error"]
+            )
+            await interaction.edit_original_response(embed=embed)
     
     @app_commands.command(name="admin_give_keys", description="[ADMIN] Give loyalty keys to user")
     @app_commands.describe(
@@ -1679,7 +2038,7 @@ class AdminCog(commands.Cog):
                 color=config.COLORS["success"]
             )
             embed.set_thumbnail(url=UI_ICONS["key"])
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
             
             # Notify user
             try:
@@ -1707,7 +2066,7 @@ class AdminCog(commands.Cog):
     @app_commands.command(name="admin_setup", description="[ADMIN] Full setup - channels, roles, infrastructure")
     async def admin_setup(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1756,12 +2115,12 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
     
     @app_commands.command(name="admin_update_status", description="[ADMIN] Force update status channel")
     async def admin_update_status(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1771,7 +2130,7 @@ class AdminCog(commands.Cog):
             await update_status_embed(status_channel, self.bot)
             embed = discord.Embed(
                 title=f"{ui('success')} Status Updated",
-                description=f"{ui('check')} Status channel has been updated with latest WEAO data.",
+                description=f"{ui('check')} Status channel has been updated with latest data.",
                 color=config.COLORS["success"]
             )
             embed.set_thumbnail(url=UI_ICONS["success"])
@@ -1783,12 +2142,12 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(name="admin_refresh_embeds", description="[ADMIN] Refresh all infrastructure embeds with new thumbnails")
     async def admin_refresh_embeds(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1858,14 +2217,14 @@ class AdminCog(commands.Cog):
                 await rewards_channel.purge(limit=10)
                 rewards_text = ""
                 for reward_type, value, chance, desc in config.REWARDS:
-                    rewards_text += f"{ui('gift')} {desc} - {chance}%\n"
+                    rewards_text += f"{ui('gift')} {desc} - {chance}%\n\n"
                 embed = discord.Embed(
                     title=f"{ui('gift')} Loyalty Rewards",
                     description=(
                         f"**Earn keys through purchases!**\n\n"
                         f"{ui('key')} Every **{config.LOYALTY_SETTINGS['purchases_per_key']} purchases** = 1 Loyalty Key\n\n"
-                        f"**Available Rewards:**\n"
-                        f"{rewards_text}\n"
+                        f"**Available Rewards:**\n\n"
+                        f"{rewards_text}"
                         f"{ui('arrow_right')} Click the button below to use a key and claim a random reward:"
                     ),
                     color=config.COLORS["gold"]
@@ -1930,12 +2289,12 @@ class AdminCog(commands.Cog):
             )
             embed.set_thumbnail(url=UI_ICONS["cross"])
         
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(name="admin_clear_emojis", description="[ADMIN] Clear all bot emojis from main server")
     async def admin_clear_emojis(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1945,22 +2304,31 @@ class AdminCog(commands.Cog):
             description=f"{ui('time')} Removing bot emojis from main server...",
             color=config.COLORS["primary"]
         )
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
         
-        deleted = await clear_main_server_emojis(interaction.guild)
-        
-        embed = discord.Embed(
-            title=f"{ui('success')} Emojis Cleared",
-            description=f"{ui('check')} Deleted **{deleted}** emojis from main server.\n\n"
-                       f"{ui('info')} Emojis are now stored on emoji servers.",
-            color=config.COLORS["success"]
-        )
-        await interaction.edit_original_response(embed=embed)
+        try:
+            deleted = await clear_main_server_emojis(interaction.guild)
+            
+            embed = discord.Embed(
+                title=f"{ui('success')} Emojis Cleared",
+                description=f"{ui('check')} Deleted **{deleted}** emojis from main server.\n\n"
+                           f"{ui('info')} Emojis are now stored on emoji servers.",
+                color=config.COLORS["success"]
+            )
+            await interaction.edit_original_response(embed=embed)
+        except Exception as e:
+            print(f"[ADMIN_CLEAR_EMOJIS] Error: {e}")
+            embed = discord.Embed(
+                title=f"{ui('cross')} Error",
+                description=f"{ui('warning')} Error clearing emojis: {str(e)[:200]}",
+                color=config.COLORS["error"]
+            )
+            await interaction.edit_original_response(embed=embed)
 
     @app_commands.command(name="admin_setup_emojis", description="[ADMIN] Setup all emojis on emoji servers")
     async def admin_setup_emojis(self, interaction: discord.Interaction):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -1970,28 +2338,37 @@ class AdminCog(commands.Cog):
             description=f"{ui('time')} Creating emojis on emoji servers...",
             color=config.COLORS["primary"]
         )
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
         
-        # Create missing emojis
-        await create_missing_emojis(self.bot, interaction.guild)
-        
-        # Reload emojis
-        await setup_ui_emojis(self.bot, interaction.guild)
-        await setup_product_emojis(self.bot, interaction.guild)
-        
-        embed = discord.Embed(
-            title=f"{ui('success')} Emojis Setup Complete",
-            description=f"{ui('check')} **{len(UI_EMOJIS)}** UI emojis loaded\n"
-                       f"{ui('check')} **{len(PRODUCT_EMOJIS)}** product emojis loaded",
-            color=config.COLORS["success"]
-        )
-        await interaction.edit_original_response(embed=embed)
+        try:
+            # Create missing emojis
+            await create_missing_emojis(self.bot, interaction.guild)
+            
+            # Reload emojis
+            await setup_ui_emojis(self.bot, interaction.guild)
+            await setup_product_emojis(self.bot, interaction.guild)
+            
+            embed = discord.Embed(
+                title=f"{ui('success')} Emojis Setup Complete",
+                description=f"{ui('check')} **{len(UI_EMOJIS)}** UI emojis loaded\n"
+                           f"{ui('check')} **{len(PRODUCT_EMOJIS)}** product emojis loaded",
+                color=config.COLORS["success"]
+            )
+            await interaction.edit_original_response(embed=embed)
+        except Exception as e:
+            print(f"[ADMIN_SETUP_EMOJIS] Error: {e}")
+            embed = discord.Embed(
+                title=f"{ui('cross')} Error",
+                description=f"{ui('warning')} Error setting up emojis: {str(e)[:200]}",
+                color=config.COLORS["error"]
+            )
+            await interaction.edit_original_response(embed=embed)
 
     @app_commands.command(name="admin_check_products", description="[ADMIN] Check & fix products/roles for email")
     @app_commands.describe(email="Email to check", fix_roles="Automatically assign missing roles")
     async def admin_check_products(self, interaction: discord.Interaction, email: str, fix_roles: bool = True):
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
@@ -2000,7 +2377,7 @@ class AdminCog(commands.Cog):
         customer = await komerza_api.get_customer_by_email(email)
         
         if not customer:
-            await interaction.followup.send(f"{ui('cross')} Customer not found: `{email}`", ephemeral=True, delete_after=15)
+            await interaction.followup.send(f"{ui('cross')} Customer not found: `{email}`", ephemeral=True)
             return
         
         # Find linked Discord user
@@ -2123,7 +2500,7 @@ class AdminCog(commands.Cog):
             color=config.COLORS["success"] if roles_assigned or roles_already_had else config.COLORS["primary"]
         )
         
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        await send_ephemeral_auto_delete(interaction, embed=embed, delete_after=60)
 
 
 # ============= INFRASTRUCTURE SETUP =============
