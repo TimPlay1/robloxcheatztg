@@ -641,7 +641,17 @@ class VerificationBot(commands.Bot):
     async def on_interaction(self, interaction: discord.Interaction):
         """Log all interactions for debugging"""
         if interaction.type == discord.InteractionType.component:
-            print(f"[INTERACTION] Button pressed: custom_id={interaction.data.get('custom_id')}, user={interaction.user}")
+            custom_id = interaction.data.get('custom_id', 'unknown')
+            print(f"[INTERACTION] Button pressed: custom_id={custom_id}, user={interaction.user}, channel={interaction.channel}")
+        elif interaction.type == discord.InteractionType.application_command:
+            cmd_name = interaction.data.get('name', 'unknown')
+            print(f"[COMMAND] Slash command: /{cmd_name}, user={interaction.user}")
+    
+    async def on_command_error(self, ctx, error):
+        """Log command errors"""
+        import traceback
+        print(f"[ERROR] Command error in {ctx.command}:")
+        traceback.print_exc()
     
     async def on_error(self, event_method: str, *args, **kwargs):
         """Log errors"""
@@ -1044,23 +1054,46 @@ class TicketView(discord.ui.View):
         emoji="🎫"
     )
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
+        print(f"[TICKET] User {interaction.user} clicked Create Ticket button")
         
-        # Check verification
-        user_data = await database.get_user_by_discord_id(interaction.user.id)
-        if not user_data:
-            embed = discord.Embed(
-                title=f"{ui('cross')} Access Denied",
-                description=f"{ui('lock')} Only verified buyers can create tickets.\n\n"
-                           f"{ui('arrow_right')} Use the verification channel to verify your account.",
-                color=config.COLORS["error"]
-            )
-            embed.set_thumbnail(url=UI_ICONS["lock"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            print(f"[TICKET] Error deferring response: {e}")
             return
         
-        is_priority = user_data.get("total_spent", 0) >= 70
-        await create_ticket_for_user(interaction, user_data, is_priority)
+        try:
+            # Check verification
+            user_data = await database.get_user_by_discord_id(interaction.user.id)
+            print(f"[TICKET] User data: {user_data}")
+            
+            if not user_data:
+                embed = discord.Embed(
+                    title=f"{ui('cross')} Access Denied",
+                    description=f"{ui('lock')} Only verified buyers can create tickets.\n\n"
+                               f"{ui('arrow_right')} Use the verification channel to verify your account.",
+                    color=config.COLORS["error"]
+                )
+                embed.set_thumbnail(url=UI_ICONS["lock"])
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            is_priority = user_data.get("total_spent", 0) >= 70
+            await create_ticket_for_user(interaction, user_data, is_priority)
+        
+        except Exception as e:
+            import traceback
+            print(f"[TICKET] ERROR: {e}")
+            traceback.print_exc()
+            try:
+                error_embed = discord.Embed(
+                    title=f"{ui('cross')} Error",
+                    description=f"{ui('warning')} An error occurred. Please try again.",
+                    color=config.COLORS["error"]
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
 
 
 class CloseTicketView(discord.ui.View):
@@ -1144,163 +1177,192 @@ class ClaimRewardView(discord.ui.View):
         emoji="🎁"
     )
     async def claim_reward(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
+        print(f"[CLAIM_REWARD] User {interaction.user} clicked Claim Reward button")
         
-        # Check verification
-        user_data = await database.get_user_by_discord_id(interaction.user.id)
-        if not user_data:
-            embed = discord.Embed(
-                title=f"{ui('cross')} Access Denied",
-                description=f"{ui('lock')} Only verified buyers can claim rewards.",
-                color=config.COLORS["error"]
-            )
-            embed.set_thumbnail(url=UI_ICONS["lock"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
-            return
-        
-        # Check keys balance
-        keys_data = await database.get_user_keys(interaction.user.id)
-        if keys_data["keys_balance"] < 1:
-            embed = discord.Embed(
-                title=f"{ui('cross')} No Loyalty Keys",
-                description=f"{ui('info')} You don't have any loyalty keys.\n\n"
-                           f"{ui('cart')} Earn keys by making purchases:\n"
-                           f"{ui('key')} Every {config.LOYALTY_SETTINGS['purchases_per_key']} purchases = 1 key\n\n"
-                           f"**{ui('chart')} Your Stats:**\n"
-                           f"{ui('key')} Keys Balance: {keys_data['keys_balance']}\n"
-                           f"{ui('check')} Total Earned: {keys_data['total_keys_earned']}\n"
-                           f"{ui('gift')} Total Used: {keys_data['total_keys_used']}",
-                color=config.COLORS["warning"]
-            )
-            embed.set_thumbnail(url=UI_ICONS["key"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
-            return
-        
-        # Use a key
-        success = await database.use_loyalty_key(interaction.user.id)
-        if not success:
-            embed = discord.Embed(
-                title=f"{ui('cross')} Error",
-                description=f"{ui('warning')} Failed to use key. Try again.",
-                color=config.COLORS["error"]
-            )
-            embed.set_thumbnail(url=UI_ICONS["cross"])
-            msg = await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
-            return
-        
-        # Roll for reward
-        reward_type, reward_value, reward_desc = roll_reward()
-        
-        # Add reward to database
-        expires_days = reward_value if reward_type == "discount_key" else None
-        reward_id = await database.add_reward(
-            interaction.user.id,
-            reward_type,
-            str(reward_value),
-            reward_desc,
-            expires_days
-        )
-        
-        # Generate reward code
-        reward_code = database.generate_reward_code()
-        
-        # Create reward embed
-        embed = discord.Embed(
-            title=f"{ui('gift')} Reward Claimed!",
-            description=f"{ui('key')} You used 1 loyalty key and won:\n\n"
-                       f"{ui('star')} **{reward_desc}**\n\n"
-                       f"{ui('coupon')} Reward Code: `{reward_code}`",
-            color=config.COLORS["gold"]
-        )
-        embed.set_thumbnail(url=UI_ICONS["gift"])
-        
-        # Get updated keys balance
-        new_keys_data = await database.get_user_keys(interaction.user.id)
-        embed.add_field(
-            name=f"{ui('key')} Keys Remaining",
-            value=str(new_keys_data["keys_balance"]),
-            inline=True
-        )
-        
-        # Add reward-specific instructions
-        if reward_type == "discount_key":
-            embed.add_field(
-                name=f"{ui('info')} How to Use",
-                value=f"{ui('arrow_right')} Use code `{reward_code}` at checkout within {reward_value} day(s).",
-                inline=False
-            )
-        elif reward_type == "roblox_alt":
-            embed.add_field(
-                name=f"{ui('info')} How to Claim",
-                value=f"{ui('ticket')} Create a ticket to receive your Roblox alt accounts.",
-                inline=False
-            )
-        elif reward_type == "free_product":
-            embed.add_field(
-                name=f"{ui('info')} How to Claim",
-                value=f"{ui('ticket')} Create a ticket to claim your mystery prize!",
-                inline=False
-            )
-        
-        embed.set_footer(text="Thank you for your loyalty! Check your DMs for a copy.")
-        embed.timestamp = datetime.now()
-        
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
-        
-        # Send reward to DM as well (permanent copy)
         try:
-            dm_embed = discord.Embed(
+            await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            print(f"[CLAIM_REWARD] Error deferring response: {e}")
+            return
+        
+        try:
+            # Check verification
+            user_data = await database.get_user_by_discord_id(interaction.user.id)
+            print(f"[CLAIM_REWARD] User data: {user_data}")
+            
+            if not user_data:
+                embed = discord.Embed(
+                    title=f"{ui('cross')} Access Denied",
+                    description=f"{ui('lock')} Only verified buyers can claim rewards.",
+                    color=config.COLORS["error"]
+                )
+                embed.set_thumbnail(url=UI_ICONS["lock"])
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Check keys balance
+            keys_data = await database.get_user_keys(interaction.user.id)
+            print(f"[CLAIM_REWARD] Keys data: {keys_data}")
+            
+            if keys_data["keys_balance"] < 1:
+                embed = discord.Embed(
+                    title=f"{ui('cross')} No Loyalty Keys",
+                    description=f"{ui('info')} You don't have any loyalty keys.\n\n"
+                               f"{ui('cart')} Earn keys by making purchases:\n"
+                               f"{ui('key')} Every {config.LOYALTY_SETTINGS['purchases_per_key']} purchases = 1 key\n\n"
+                               f"**{ui('chart')} Your Stats:**\n"
+                               f"{ui('key')} Keys Balance: {keys_data['keys_balance']}\n"
+                               f"{ui('check')} Total Earned: {keys_data['total_keys_earned']}\n"
+                               f"{ui('gift')} Total Used: {keys_data['total_keys_used']}",
+                    color=config.COLORS["warning"]
+                )
+                embed.set_thumbnail(url=UI_ICONS["key"])
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Use a key
+            success = await database.use_loyalty_key(interaction.user.id)
+            print(f"[CLAIM_REWARD] Key usage success: {success}")
+            
+            if not success:
+                embed = discord.Embed(
+                    title=f"{ui('cross')} Error",
+                    description=f"{ui('warning')} Failed to use key. Try again.",
+                    color=config.COLORS["error"]
+                )
+                embed.set_thumbnail(url=UI_ICONS["cross"])
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Roll for reward
+            reward_type, reward_value, reward_desc = roll_reward()
+            print(f"[CLAIM_REWARD] Rolled reward: {reward_type}, {reward_value}, {reward_desc}")
+            
+            # Add reward to database
+            expires_days = reward_value if reward_type == "discount_key" else None
+            reward_id = await database.add_reward(
+                interaction.user.id,
+                reward_type,
+                str(reward_value),
+                reward_desc,
+                expires_days
+            )
+            
+            # Generate reward code
+            reward_code = database.generate_reward_code()
+            
+            # Create reward embed
+            embed = discord.Embed(
                 title=f"{ui('gift')} Reward Claimed!",
-                description=f"{ui('info')} Here is your permanent reward record:\n\n"
+                description=f"{ui('key')} You used 1 loyalty key and won:\n\n"
                            f"{ui('star')} **{reward_desc}**\n\n"
                            f"{ui('coupon')} Reward Code: `{reward_code}`",
                 color=config.COLORS["gold"]
             )
-            dm_embed.set_thumbnail(url=UI_ICONS["gift"])
-            dm_embed.add_field(
+            embed.set_thumbnail(url=UI_ICONS["gift"])
+            
+            # Get updated keys balance
+            new_keys_data = await database.get_user_keys(interaction.user.id)
+            embed.add_field(
                 name=f"{ui('key')} Keys Remaining",
                 value=str(new_keys_data["keys_balance"]),
                 inline=True
             )
+            
+            # Add reward-specific instructions
             if reward_type == "discount_key":
-                dm_embed.add_field(
+                embed.add_field(
                     name=f"{ui('info')} How to Use",
                     value=f"{ui('arrow_right')} Use code `{reward_code}` at checkout within {reward_value} day(s).",
                     inline=False
                 )
             elif reward_type == "roblox_alt":
-                dm_embed.add_field(
+                embed.add_field(
                     name=f"{ui('info')} How to Claim",
-                    value=f"{ui('ticket')} Create a ticket in the Discord server to receive your Roblox alt accounts.",
+                    value=f"{ui('ticket')} Create a ticket to receive your Roblox alt accounts.",
                     inline=False
                 )
             elif reward_type == "free_product":
-                dm_embed.add_field(
+                embed.add_field(
                     name=f"{ui('info')} How to Claim",
-                    value=f"{ui('ticket')} Create a ticket in the Discord server to claim your mystery prize!",
+                    value=f"{ui('ticket')} Create a ticket to claim your mystery prize!",
                     inline=False
                 )
-            dm_embed.set_footer(text="RobloxCheatz | Keep this for your records")
-            dm_embed.timestamp = datetime.now()
-            await interaction.user.send(embed=dm_embed)
-        except:
-            pass
-        
-        # Log to channel
-        if config.CHANNELS.get("logs"):
-            log_channel = interaction.guild.get_channel(config.CHANNELS["logs"])
-            if log_channel:
-                log_embed = discord.Embed(
-                    title=f"{ui('gift')} Reward Claimed",
+            
+            embed.set_footer(text="Thank you for your loyalty! Check your DMs for a copy.")
+            embed.timestamp = datetime.now()
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            print(f"[CLAIM_REWARD] Reward sent to {interaction.user}: {reward_desc}")
+            
+            # Send reward to DM as well (permanent copy)
+            try:
+                dm_embed = discord.Embed(
+                    title=f"{ui('gift')} Reward Claimed!",
+                    description=f"{ui('info')} Here is your permanent reward record:\n\n"
+                               f"{ui('star')} **{reward_desc}**\n\n"
+                               f"{ui('coupon')} Reward Code: `{reward_code}`",
                     color=config.COLORS["gold"]
                 )
-                log_embed.set_thumbnail(url=UI_ICONS["gift"])
-                log_embed.add_field(name=f"{ui('user')} User", value=interaction.user.mention, inline=True)
-                log_embed.add_field(name=f"{ui('star')} Reward", value=reward_desc, inline=True)
-                log_embed.add_field(name=f"{ui('coupon')} Code", value=f"`{reward_code}`", inline=True)
-                log_embed.timestamp = datetime.now()
-                
-                await log_channel.send(embed=log_embed)
+                dm_embed.set_thumbnail(url=UI_ICONS["gift"])
+                dm_embed.add_field(
+                    name=f"{ui('key')} Keys Remaining",
+                    value=str(new_keys_data["keys_balance"]),
+                    inline=True
+                )
+                if reward_type == "discount_key":
+                    dm_embed.add_field(
+                        name=f"{ui('info')} How to Use",
+                        value=f"{ui('arrow_right')} Use code `{reward_code}` at checkout within {reward_value} day(s).",
+                        inline=False
+                    )
+                elif reward_type == "roblox_alt":
+                    dm_embed.add_field(
+                        name=f"{ui('info')} How to Claim",
+                        value=f"{ui('ticket')} Create a ticket in the Discord server to receive your Roblox alt accounts.",
+                        inline=False
+                    )
+                elif reward_type == "free_product":
+                    dm_embed.add_field(
+                        name=f"{ui('info')} How to Claim",
+                        value=f"{ui('ticket')} Create a ticket in the Discord server to claim your mystery prize!",
+                        inline=False
+                    )
+                dm_embed.set_footer(text="RobloxCheatz | Keep this for your records")
+                dm_embed.timestamp = datetime.now()
+                await interaction.user.send(embed=dm_embed)
+            except Exception as dm_error:
+                print(f"[CLAIM_REWARD] Could not send DM: {dm_error}")
+            
+            # Log to channel
+            if config.CHANNELS.get("logs"):
+                log_channel = interaction.guild.get_channel(config.CHANNELS["logs"])
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title=f"{ui('gift')} Reward Claimed",
+                        color=config.COLORS["gold"]
+                    )
+                    log_embed.set_thumbnail(url=UI_ICONS["gift"])
+                    log_embed.add_field(name=f"{ui('user')} User", value=interaction.user.mention, inline=True)
+                    log_embed.add_field(name=f"{ui('star')} Reward", value=reward_desc, inline=True)
+                    log_embed.add_field(name=f"{ui('coupon')} Code", value=f"`{reward_code}`", inline=True)
+                    log_embed.timestamp = datetime.now()
+                    
+                    await log_channel.send(embed=log_embed)
+        
+        except Exception as e:
+            import traceback
+            print(f"[CLAIM_REWARD] ERROR: {e}")
+            traceback.print_exc()
+            try:
+                error_embed = discord.Embed(
+                    title=f"{ui('cross')} Error",
+                    description=f"{ui('warning')} An error occurred while claiming your reward. Please try again.",
+                    color=config.COLORS["error"]
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
 
 
 # ============= TICKET HELPER =============
@@ -1586,40 +1648,61 @@ class AdminCog(commands.Cog):
         user: discord.Member,
         amount: int
     ):
+        print(f"[ADMIN_GIVE_KEYS] Command by {interaction.user}, target: {user}, amount: {amount}")
+        
         if not await self.is_admin(interaction):
-            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True, delete_after=15)
+            print(f"[ADMIN_GIVE_KEYS] Permission denied for {interaction.user}")
+            await interaction.response.send_message(f"{ui('cross')} Insufficient permissions", ephemeral=True)
             return
         
-        await interaction.response.defer(ephemeral=True)
-        
-        user_data = await database.get_user_by_discord_id(user.id)
-        if not user_data:
-            await interaction.followup.send(f"{ui('cross')} User is not verified", ephemeral=True, delete_after=15)
-            return
-        
-        new_balance = await database.add_loyalty_keys(user.id, amount)
-        
-        embed = discord.Embed(
-            title=f"{ui('success')} Keys Added",
-            description=f"{ui('key')} Added {amount} keys to {user.mention}\n\n"
-                       f"{ui('info')} New balance: {new_balance} keys",
-            color=config.COLORS["success"]
-        )
-        embed.set_thumbnail(url=UI_ICONS["key"])
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=15)
-        
-        # Notify user
         try:
-            notify_embed = discord.Embed(
-                title=f"{ui('gift')} Loyalty Keys Received!",
-                description=f"{ui('star')} An administrator gave you **{amount}** loyalty key(s)!\n\n"
-                           f"{ui('arrow_right')} Use them in the rewards channel.",
-                color=config.COLORS["gold"]
+            await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            print(f"[ADMIN_GIVE_KEYS] Error deferring: {e}")
+            return
+        
+        try:
+            user_data = await database.get_user_by_discord_id(user.id)
+            print(f"[ADMIN_GIVE_KEYS] Target user data: {user_data}")
+            
+            if not user_data:
+                await interaction.followup.send(f"{ui('cross')} User is not verified", ephemeral=True)
+                return
+            
+            new_balance = await database.add_loyalty_keys(user.id, amount)
+            print(f"[ADMIN_GIVE_KEYS] New balance for {user}: {new_balance}")
+            
+            embed = discord.Embed(
+                title=f"{ui('success')} Keys Added",
+                description=f"{ui('key')} Added {amount} keys to {user.mention}\n\n"
+                           f"{ui('info')} New balance: {new_balance} keys",
+                color=config.COLORS["success"]
             )
-            notify_embed.set_thumbnail(url=UI_ICONS["key"])
-            await user.send(embed=notify_embed)
-        except:
-            pass
+            embed.set_thumbnail(url=UI_ICONS["key"])
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Notify user
+            try:
+                notify_embed = discord.Embed(
+                    title=f"{ui('gift')} Loyalty Keys Received!",
+                    description=f"{ui('star')} An administrator gave you **{amount}** loyalty key(s)!\n\n"
+                               f"{ui('arrow_right')} Use them in the rewards channel.",
+                    color=config.COLORS["gold"]
+                )
+                notify_embed.set_thumbnail(url=UI_ICONS["key"])
+                await user.send(embed=notify_embed)
+                print(f"[ADMIN_GIVE_KEYS] Notification sent to {user}")
+            except Exception as dm_error:
+                print(f"[ADMIN_GIVE_KEYS] Could not send DM: {dm_error}")
+        
+        except Exception as e:
+            import traceback
+            print(f"[ADMIN_GIVE_KEYS] ERROR: {e}")
+            traceback.print_exc()
+            try:
+                await interaction.followup.send(f"{ui('cross')} An error occurred: {str(e)}", ephemeral=True)
+            except:
+                pass
     
     @app_commands.command(name="admin_setup", description="[ADMIN] Full setup - channels, roles, infrastructure")
     async def admin_setup(self, interaction: discord.Interaction):

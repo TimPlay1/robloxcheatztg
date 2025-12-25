@@ -485,6 +485,15 @@ async def notify_new_vip_ticket(
     """Send notification to Telegram about new VIP ticket"""
     global telegram_app
     
+    # Check if Telegram is enabled
+    if not is_telegram_enabled():
+        print(f"[!] Telegram not enabled - skipping VIP ticket notification for {discord_username}")
+        return
+    
+    if not authorized_users:
+        print("[!] No authorized Telegram users to notify")
+        return
+    
     # Build notification message
     text = (
         "🎫 *NEW VIP TICKET!*\n"
@@ -503,22 +512,27 @@ async def notify_new_vip_ticket(
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     # Send to all authorized users
-    if telegram_app:
-        for user_id in authorized_users:
-            try:
-                await telegram_app.bot.send_message(
-                    chat_id=user_id,
-                    text=text,
-                    reply_markup=reply_markup,
-                    parse_mode="Markdown"
-                )
-            except Exception as e:
-                print(f"[!] Error sending Telegram notification to {user_id}: {e}")
+    print(f"[TELEGRAM] Sending VIP ticket notification to {len(authorized_users)} users...")
+    for user_id in authorized_users:
+        try:
+            await telegram_app.bot.send_message(
+                chat_id=user_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+            print(f"[TELEGRAM] Notification sent to user {user_id}")
+        except Exception as e:
+            print(f"[!] Error sending Telegram notification to {user_id}: {e}")
 
 
 async def notify_ticket_message(channel_id: int, username: str, message: str):
     """Forward ticket message to Telegram"""
     global telegram_app
+    
+    # Check if Telegram is enabled
+    if not is_telegram_enabled():
+        return
     
     # Find users who are chatting with this ticket
     for user_id, chat_info in active_chats.items():
@@ -529,6 +543,7 @@ async def notify_ticket_message(channel_id: int, username: str, message: str):
                     text=f"👤 *{username}:*\n{message}",
                     parse_mode="Markdown"
                 )
+                print(f"[TELEGRAM] Message forwarded to {user_id}")
             except Exception as e:
                 print(f"[!] Error forwarding message to Telegram: {e}")
 
@@ -536,6 +551,10 @@ async def notify_ticket_message(channel_id: int, username: str, message: str):
 async def notify_ticket_closed(channel_id: int):
     """Notify that ticket was closed"""
     global telegram_app
+    
+    # Check if Telegram is enabled
+    if not is_telegram_enabled():
+        return
     
     # Get ticket info from DB
     tickets = get_tickets_from_db()
@@ -555,13 +574,19 @@ async def notify_ticket_closed(channel_id: int):
                         text=f"🔒 Ticket with *{ticket_info.get('discord_username')}* has been closed.",
                         parse_mode="Markdown"
                     )
-                except:
-                    pass
+                    print(f"[TELEGRAM] Ticket closed notification sent to {user_id}")
+                except Exception as e:
+                    print(f"[!] Error notifying ticket closure: {e}")
                 del active_chats[user_id]
 
 
 # ============= Telegram App Instance =============
 telegram_app: Optional[Application] = None
+
+
+def is_telegram_enabled() -> bool:
+    """Check if Telegram bot is properly configured"""
+    return bool(TELEGRAM_TOKEN and telegram_app)
 
 
 async def start_telegram_bot(discord_bot_instance):
@@ -570,22 +595,32 @@ async def start_telegram_bot(discord_bot_instance):
     
     discord_bot = discord_bot_instance
     
-    load_authorized_users()
+    # Check if token is configured
+    if not TELEGRAM_TOKEN:
+        print("[!] TELEGRAM_TOKEN not set - Telegram bot disabled")
+        return
     
-    # Create application
-    telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # Add handlers
-    telegram_app.add_handler(CommandHandler("start", start_command))
-    telegram_app.add_handler(CommandHandler("auth", auth_command))
-    telegram_app.add_handler(CallbackQueryHandler(callback_handler))
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # Initialize without polling (webhook mode - updates come via HTTP)
-    print("[OK] Telegram bot initializing (webhook mode)...")
-    await telegram_app.initialize()
-    await telegram_app.start()
-    print("[OK] Telegram bot ready for webhooks!")
+    try:
+        load_authorized_users()
+        
+        # Create application
+        telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+        
+        # Add handlers
+        telegram_app.add_handler(CommandHandler("start", start_command))
+        telegram_app.add_handler(CommandHandler("auth", auth_command))
+        telegram_app.add_handler(CallbackQueryHandler(callback_handler))
+        telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
+        # Initialize without polling (webhook mode - updates come via HTTP)
+        print("[OK] Telegram bot initializing (webhook mode)...")
+        await telegram_app.initialize()
+        await telegram_app.start()
+        print("[OK] Telegram bot ready for webhooks!")
+        print(f"[OK] Authorized users: {len(authorized_users)}")
+    except Exception as e:
+        print(f"[!] Failed to start Telegram bot: {e}")
+        telegram_app = None
 
 
 async def process_telegram_update(update_data: dict):
