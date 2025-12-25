@@ -555,6 +555,15 @@ class VerificationBot(commands.Bot):
         # Add command cogs (admin only)
         await self.add_cog(AdminCog(self))
         
+        # Register persistent views BEFORE syncing commands
+        # This makes buttons work after bot restart
+        self.add_view(VerifyButtonView())
+        self.add_view(TicketView())
+        self.add_view(CloseTicketView())
+        self.add_view(PriorityTicketView())
+        self.add_view(ClaimRewardView())
+        print("[OK] Persistent views registered")
+        
         # Sync slash commands
         guild = discord.Object(id=config.GUILD_ID)
         self.tree.copy_global_to(guild=guild)
@@ -575,13 +584,9 @@ class VerificationBot(commands.Bot):
             await self.role_manager.ensure_roles_exist()
             await setup_channels_permissions(guild, self.role_manager)
         
-        # Set bot status - custom gaming status
-        await self.change_presence(
-            activity=discord.Game(
-                name="🎮 Dominating Roblox | robloxcheatz.com"
-            ),
-            status=discord.Status.online
-        )
+        # Start rotating status task
+        if not self.rotate_status.is_running():
+            self.rotate_status.start()
         
         # Load customer cache
         await komerza_api.load_all_customers()
@@ -594,13 +599,6 @@ class VerificationBot(commands.Bot):
         
         # Setup infrastructure (auto-create channels)
         await setup_infrastructure(guild, self)
-        
-        # Register persistent views (buttons work after restart)
-        self.add_view(VerifyButtonView())
-        self.add_view(TicketView())
-        self.add_view(CloseTicketView())
-        self.add_view(PriorityTicketView())
-        self.add_view(ClaimRewardView())
         
         # Start background tasks
         if not self.sync_purchases.is_running():
@@ -639,6 +637,17 @@ class VerificationBot(commands.Bot):
                     print(f"[!] Failed to forward message to Telegram: {e}")
         
         await self.process_commands(message)
+    
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Log all interactions for debugging"""
+        if interaction.type == discord.InteractionType.component:
+            print(f"[INTERACTION] Button pressed: custom_id={interaction.data.get('custom_id')}, user={interaction.user}")
+    
+    async def on_error(self, event_method: str, *args, **kwargs):
+        """Log errors"""
+        import traceback
+        print(f"[ERROR] Error in {event_method}:")
+        traceback.print_exc()
     
     @tasks.loop(minutes=10)
     async def refresh_customers_cache(self):
@@ -723,6 +732,37 @@ class VerificationBot(commands.Bot):
     
     @sync_purchases.before_loop
     async def before_sync(self):
+        await self.wait_until_ready()
+
+    @tasks.loop(seconds=30)
+    async def rotate_status(self):
+        """Rotate bot status every 30 seconds"""
+        import random
+        
+        statuses = [
+            # Gaming statuses
+            discord.Game(name="🎮 Dominating Roblox | robloxcheatz.com"),
+            discord.Game(name="⚡ Premium Exploits | robloxcheatz.com"),
+            discord.Game(name="🔥 Undetected & Safe | robloxcheatz.com"),
+            discord.Game(name="🛡️ Verify to Unlock | robloxcheatz.com"),
+            discord.Game(name="💎 VIP Support Available | robloxcheatz.com"),
+            discord.Game(name="🎁 Loyalty Rewards | robloxcheatz.com"),
+            discord.Game(name="🚀 Wave & Seliware | robloxcheatz.com"),
+            # Watching statuses
+            discord.Activity(type=discord.ActivityType.watching, name="over verified members 👀"),
+            discord.Activity(type=discord.ActivityType.watching, name=f"{len(self.guilds)} servers 🌐"),
+            # Listening statuses  
+            discord.Activity(type=discord.ActivityType.listening, name="support tickets 🎫"),
+            # Competing statuses
+            discord.Activity(type=discord.ActivityType.competing, name="Roblox exploits market 🏆"),
+        ]
+        
+        # Pick random status
+        activity = random.choice(statuses)
+        await self.change_presence(activity=activity, status=discord.Status.online)
+    
+    @rotate_status.before_loop
+    async def before_rotate_status(self):
         await self.wait_until_ready()
 
 
